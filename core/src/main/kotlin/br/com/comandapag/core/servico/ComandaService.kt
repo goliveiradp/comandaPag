@@ -4,8 +4,10 @@ import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.Pagamento
+import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
@@ -13,7 +15,11 @@ import br.com.comandapag.core.repositorio.ComandaRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class RegraDeNegocioException(mensagem: String) : Exception(mensagem)
+open class RegraDeNegocioException(mensagem: String) : Exception(mensagem)
+
+/** O usuário não tem a [permissao]; a interface pode pedir a autorização de outra pessoa. */
+class SemPermissaoException(val permissao: Permissao) :
+    RegraDeNegocioException("Sem permissão para: ${permissao.descricao.lowercase()}.")
 
 class ComandaService(
     private val comandas: ComandaRepository,
@@ -26,13 +32,20 @@ class ComandaService(
      */
     private val trava = Mutex()
 
-    suspend fun abrir(identificacao: String, taxaServico: Boolean = false): Comanda = trava.withLock {
+    /** Abre uma comanda tendo [responsavel] como garçom responsável. */
+    suspend fun abrir(identificacao: String, responsavel: Usuario, taxaServico: Boolean = false): Comanda = trava.withLock {
         val id = identificacao.trim()
         if (id.isEmpty()) erro("Informe o número da comanda, mesa ou nome do cliente.")
         if (comandas.buscarAbertaPorIdentificacao(id) != null) {
             erro("Já existe uma comanda aberta para \"$id\".")
         }
-        val nova = Comanda(identificacao = id, abertaEm = agora(), taxaServico = taxaServico)
+        val nova = Comanda(
+            identificacao = id,
+            abertaEm = agora(),
+            taxaServico = taxaServico,
+            garcomId = responsavel.id,
+            garcomNome = responsavel.nome,
+        )
         nova.copy(id = comandas.salvar(nova))
     }
 
@@ -65,24 +78,39 @@ class ComandaService(
         salvar(comanda.copy(itens = itens))
     }
 
-    /** Altera a quantidade do item na posição [indice]. Quantidade 0 remove o item. */
-    suspend fun alterarQuantidade(comandaId: Long, indice: Int, quantidade: Int): Comanda = trava.withLock {
+    /**
+     * Altera a quantidade do item na posição [indice]. Quantidade 0 remove o item.
+     * Diminuir ou remover exige [Permissao.REMOVER_ITENS].
+     */
+    suspend fun alterarQuantidade(comandaId: Long, indice: Int, quantidade: Int, operador: Usuario): Comanda = trava.withLock {
         if (quantidade < 0) erro("A quantidade não pode ser negativa.")
         val comanda = comandaAberta(comandaId)
         if (indice !in comanda.itens.indices) erro("Item não encontrado na comanda.")
+        if (quantidade < comanda.itens[indice].quantidade) exigir(operador, Permissao.REMOVER_ITENS)
         val itens = comanda.itens.toMutableList()
         if (quantidade == 0) itens.removeAt(indice) else itens[indice] = itens[indice].copy(quantidade = quantidade)
         salvar(comanda.copy(itens = itens))
     }
 
-    suspend fun removerItem(comandaId: Long, indice: Int): Comanda = alterarQuantidade(comandaId, indice, 0)
+    suspend fun removerItem(comandaId: Long, indice: Int, operador: Usuario): Comanda =
+        alterarQuantidade(comandaId, indice, 0, operador)
 
-    suspend fun definirTaxaServico(comandaId: Long, ativa: Boolean): Comanda = trava.withLock {
-        salvar(comandaAberta(comandaId).copy(taxaServico = ativa))
+    suspend fun definirTaxaServico(comandaId: Long, ativa: Boolean, operador: Usuario): Comanda = trava.withLock {
+        val comanda = comandaAberta(comandaId)
+        if (comanda.taxaServico == ativa) return@withLock comanda
+        exigir(operador, Permissao.ALTERAR_TAXA_SERVICO)
+        salvar(comanda.copy(taxaServico = ativa))
     }
 
-    suspend fun cancelar(comandaId: Long): Comanda = trava.withLock {
-        salvar(comandaAberta(comandaId).copy(status = StatusComanda.CANCELADA, fechadaEm = agora()))
+    suspend fun cancelar(comandaId: Long, operador: Usuario): Comanda = trava.withLock {
+        exigir(operador, Permissao.CANCELAR_COMANDA)
+        salvar(
+            comandaAberta(comandaId).copy(
+                status = StatusComanda.CANCELADA,
+                fechadaEm = agora(),
+                fechadaPor = operador.nome,
+            ),
+        )
     }
 
     /**
@@ -94,8 +122,10 @@ class ComandaService(
         comandaId: Long,
         forma: FormaPagamento,
         parcelas: Int = 1,
+        operador: Usuario,
         aoMudarStatus: (String) -> Unit = {},
     ): ResultadoPagamento = trava.withLock {
+        exigir(operador, Permissao.COBRAR)
         val comanda = comandaAberta(comandaId)
         val total = comanda.totalCentavos
         if (total <= 0) erro("A comanda está vazia.")
@@ -119,6 +149,7 @@ class ComandaService(
                 comanda.copy(
                     status = StatusComanda.PAGA,
                     fechadaEm = momento,
+                    fechadaPor = operador.nome,
                     pagamento = Pagamento(
                         forma = forma,
                         valorCentavos = total,
@@ -143,6 +174,10 @@ class ComandaService(
     private suspend fun salvar(comanda: Comanda): Comanda {
         comandas.salvar(comanda)
         return comanda
+    }
+
+    private fun exigir(usuario: Usuario, permissao: Permissao) {
+        if (!usuario.pode(permissao)) throw SemPermissaoException(permissao)
     }
 
     private fun erro(mensagem: String): Nothing = throw RegraDeNegocioException(mensagem)

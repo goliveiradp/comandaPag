@@ -2,11 +2,13 @@ package br.com.comandapag.core
 
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
 import br.com.comandapag.core.repositorio.ComandaRepository
+import br.com.comandapag.core.repositorio.UsuarioRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -51,4 +53,18 @@ class TerminalFalso(var resposta: ResultadoPagamento = ResultadoPagamento.Aprova
         return resposta
     }
     override suspend fun cancelarOperacao() {}
+}
+
+class UsuarioRepositoryEmMemoria : UsuarioRepository {
+    private val dados = MutableStateFlow<Map<Long, Usuario>>(emptyMap())
+    private var proximoId = 1L
+
+    override fun observarTodos(): Flow<List<Usuario>> = dados.map { it.values.toList() }
+    override suspend fun listarTodos(): List<Usuario> = dados.value.values.toList()
+    override suspend fun buscar(id: Long): Usuario? = dados.value[id]
+    override suspend fun salvar(usuario: Usuario): Long {
+        val id = if (usuario.id == 0L) proximoId++ else usuario.id
+        dados.value = dados.value + (id to usuario.copy(id = id))
+        return id
+    }
 }

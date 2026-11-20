@@ -80,3 +80,18 @@ abstract class ComandaDao {
         return id
     }
 }
+
+@Dao
+interface UsuarioDao {
+    @Query("SELECT * FROM usuarios ORDER BY ativo DESC, nome COLLATE NOCASE")
+    fun observarTodos(): Flow<List<UsuarioEntity>>
+
+    @Query("SELECT * FROM usuarios")
+    suspend fun listarTodos(): List<UsuarioEntity>
+
+    @Query("SELECT * FROM usuarios WHERE id = :id")
+    suspend fun buscar(id: Long): UsuarioEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun salvar(usuario: UsuarioEntity): Long
+}

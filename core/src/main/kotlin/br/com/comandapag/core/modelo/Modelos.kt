@@ -47,6 +47,11 @@ data class Comanda(
     val taxaServico: Boolean = false,
     val fechadaEm: Long? = null,
     val pagamento: Pagamento? = null,
+    /** Garçom responsável (quem abriu a comanda). */
+    val garcomId: Long = 0,
+    val garcomNome: String = "",
+    /** Quem cobrou ou cancelou a comanda. */
+    val fechadaPor: String? = null,
 ) {
     val subtotalCentavos: Long get() = itens.sumOf { it.subtotalCentavos }
 

@@ -7,6 +7,7 @@ import br.com.comandapag.core.impressao.ExtratoComanda
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.servico.RegraDeNegocioException
@@ -43,23 +44,26 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
         aviso.value = "${quantidade}x ${produto.nome} adicionado"
     }
 
-    fun alterarQuantidade(indice: Int, quantidade: Int) = executar {
-        service.alterarQuantidade(comandaId, indice, quantidade)
+    /** [operador] é quem fez a alteração (ou quem autorizou, no caso de diminuir/remover). */
+    fun alterarQuantidade(indice: Int, quantidade: Int, operador: Usuario) = executar {
+        service.alterarQuantidade(comandaId, indice, quantidade, operador)
     }
 
-    fun definirTaxaServico(ativa: Boolean) = executar { service.definirTaxaServico(comandaId, ativa) }
+    fun definirTaxaServico(ativa: Boolean, operador: Usuario) = executar {
+        service.definirTaxaServico(comandaId, ativa, operador)
+    }
 
-    fun cancelarComanda(aoCancelar: () -> Unit) = executar {
-        service.cancelar(comandaId)
+    fun cancelarComanda(operador: Usuario, aoCancelar: () -> Unit) = executar {
+        service.cancelar(comandaId, operador)
         aoCancelar()
     }
 
-    fun cobrar(forma: FormaPagamento, parcelas: Int) {
+    fun cobrar(forma: FormaPagamento, parcelas: Int, operador: Usuario) {
         if (cobranca.value is EstadoCobranca.EmAndamento) return
         cobranca.value = EstadoCobranca.EmAndamento("Iniciando ${forma.descricao.lowercase()}...")
         viewModelScope.launch {
             cobranca.value = try {
-                val r = service.cobrar(comandaId, forma, parcelas) { status ->
+                val r = service.cobrar(comandaId, forma, parcelas, operador) { status ->
                     if (cobranca.value is EstadoCobranca.EmAndamento) cobranca.value = EstadoCobranca.EmAndamento(status)
                 }
                 when (r) {

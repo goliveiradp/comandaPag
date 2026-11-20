@@ -6,6 +6,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Telas do app](docs/telas.png)
 
+![Login, usuários e autorização](docs/acesso.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -17,8 +19,30 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   Se aprovado, a comanda é fechada automaticamente.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
-- **Ajustes**: nome do estabelecimento (sai no extrato), taxa de serviço padrão e
-  ativação da maquininha.
+- **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou
+  cancelou). Aparece na lista, na comanda, no extrato e no histórico, que mostra
+  as vendas do dia por garçom. Filtro "Minhas / Todas" na lista de comandas.
+- **Login com PIN e permissões**: cada pessoa entra com seu nome e PIN (4 a 6
+  números). As permissões são individuais, com perfis prontos:
+
+  | Permissão                         | Garçom | Caixa | Gerente | Administrador |
+  |-----------------------------------|:------:|:-----:|:-------:|:-------------:|
+  | Abrir comanda e lançar itens      | ✔      | ✔     | ✔       | ✔             |
+  | Cobrar na maquininha              | ✔      | ✔     | ✔       | ✔             |
+  | Diminuir/remover itens            |        |       | ✔       | ✔             |
+  | Cancelar comanda                  |        |       | ✔       | ✔             |
+  | Ligar/desligar 10% de serviço     |        |       | ✔       | ✔             |
+  | Ver histórico e vendas            |        | ✔     | ✔       | ✔             |
+  | Cadastrar produtos                |        |       | ✔       | ✔             |
+  | Cadastrar usuários e permissões   |        |       |         | ✔             |
+  | Ajustes e ativação da maquininha  |        |       |         | ✔             |
+
+  Quando alguém tenta uma ação sem permissão (ex.: garçom removendo um item), o app
+  pede o **PIN de uma pessoa autorizada**, como o gerente. O PIN é guardado só como
+  hash (SHA-256 com salt); 5 erros seguidos bloqueiam o usuário por 30 segundos.
+  No primeiro uso o app pede para criar o administrador.
+- **Ajustes**: troca do próprio PIN; nome do estabelecimento (sai no extrato),
+  taxa de serviço padrão e ativação da maquininha.
 - Funciona **offline**: os dados ficam no banco local (Room/SQLite) da maquininha.
 
 ## Estrutura do projeto
@@ -26,7 +50,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 ```
 core/   Regras de negócio em Kotlin puro (sem Android) + testes
         ├─ modelo/       Produto, Comanda, ItemComanda, Pagamento, Dinheiro
-        ├─ servico/      ComandaService (abrir, lançar itens, cobrar, cancelar)
+        ├─ servico/      ComandaService (comandas) e UsuarioService (login, PIN, permissões)
+        ├─ seguranca/    Hash do PIN
         ├─ pagamento/    Interfaces TerminalPagamento e Impressora
         ├─ repositorio/  Interfaces de persistência
         └─ impressao/    ExtratoComanda (texto do cupom em 32 colunas)

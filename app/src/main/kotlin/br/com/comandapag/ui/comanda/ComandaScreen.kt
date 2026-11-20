@@ -50,8 +50,12 @@ import br.com.comandapag.core.impressao.ExtratoComanda
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.ItemComanda
+import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.ui.MensagemVazia
+import br.com.comandapag.ui.acesso.rememberAutorizador
+import br.com.comandapag.ui.dependencias
 import br.com.comandapag.ui.viewModelCom
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,9 +66,12 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val produtos by vm.produtos.collectAsStateWithLifecycle()
     val cobranca by vm.cobranca.collectAsStateWithLifecycle()
     val aviso by vm.aviso.collectAsStateWithLifecycle()
+    val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
+    val autorizador = rememberAutorizador()
+    // Quem vai cobrar (o próprio usuário ou quem autorizou)
+    var cobrador by remember { mutableStateOf<Usuario?>(null) }
 
     var mostrarProdutos by remember { mutableStateOf(false) }
-    var mostrarCobrar by remember { mutableStateOf(false) }
     var confirmarCancelamento by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -93,11 +100,19 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                     title = {
                         Column {
                             Text(c?.identificacao ?: "", maxLines = 1)
-                            if (c != null && !aberta) {
-                                Text(
-                                    if (c.status == StatusComanda.PAGA) "Paga" else "Cancelada",
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
+                            if (c != null) {
+                                val situacao = when (c.status) {
+                                    StatusComanda.ABERTA -> null
+                                    StatusComanda.PAGA -> "Paga"
+                                    StatusComanda.CANCELADA -> "Cancelada"
+                                }
+                                val linha = listOfNotNull(
+                                    c.garcomNome.takeIf { it.isNotBlank() }?.let { "Garçom: $it" },
+                                    situacao?.let { st -> st + (c.fechadaPor?.let { " por $it" } ?: "") },
+                                ).joinToString(" · ")
+                                if (linha.isNotEmpty()) {
+                                    Text(linha, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
                             }
                         }
                     },
@@ -125,9 +140,11 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                 if (c != null) {
                     Resumo(
                         comanda = c,
-                        aoAlterarTaxa = vm::definirTaxaServico,
+                        aoAlterarTaxa = { ativa ->
+                            autorizador.exigir(Permissao.ALTERAR_TAXA_SERVICO) { vm.definirTaxaServico(ativa, it) }
+                        },
                         aoAdicionar = { mostrarProdutos = true },
-                        aoCobrar = { mostrarCobrar = true },
+                        aoCobrar = { autorizador.exigir(Permissao.COBRAR) { cobrador = it } },
                     )
                 }
             },
@@ -144,7 +161,15 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                         LinhaItem(
                             item = item,
                             editavel = aberta,
-                            aoAlterar = { vm.alterarQuantidade(indice, it) },
+                            aoAlterar = { nova ->
+                                val u = usuario
+                                if (nova > item.quantidade && u != null) {
+                                    // Aumentar a quantidade é livre
+                                    vm.alterarQuantidade(indice, nova, u)
+                                } else {
+                                    autorizador.exigir(Permissao.REMOVER_ITENS) { vm.alterarQuantidade(indice, nova, it) }
+                                }
+                            },
                         )
                         HorizontalDivider()
                     }
@@ -153,14 +178,15 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
         }
     }
 
-    if (mostrarCobrar && c != null) {
+    val quemCobra = cobrador
+    if (quemCobra != null && c != null) {
         DialogoCobrar(
             totalCentavos = c.totalCentavos,
             simulada = vm.maquininhaSimulada,
-            aoCancelar = { mostrarCobrar = false },
+            aoCancelar = { cobrador = null },
             aoConfirmar = { forma, parcelas ->
-                mostrarCobrar = false
-                vm.cobrar(forma, parcelas)
+                cobrador = null
+                vm.cobrar(forma, parcelas, quemCobra)
             },
         )
     }
@@ -184,7 +210,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmarCancelamento = false
-                    vm.cancelarComanda(aoVoltar)
+                    autorizador.exigir(Permissao.CANCELAR_COMANDA) { vm.cancelarComanda(it, aoVoltar) }
                 }) { Text("Cancelar comanda") }
             },
             dismissButton = { TextButton(onClick = { confirmarCancelamento = false }) { Text("Voltar") } },

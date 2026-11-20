@@ -2,6 +2,7 @@ package br.com.comandapag.core.repositorio
 
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.Usuario
 import kotlinx.coroutines.flow.Flow
 
 interface ProdutoRepository {
@@ -20,4 +21,12 @@ interface ComandaRepository {
     suspend fun buscarAbertaPorIdentificacao(identificacao: String): Comanda?
     /** Insere (id = 0) ou atualiza a comanda e seus itens. Retorna o id. */
     suspend fun salvar(comanda: Comanda): Long
+}
+
+interface UsuarioRepository {
+    fun observarTodos(): Flow<List<Usuario>>
+    suspend fun listarTodos(): List<Usuario>
+    suspend fun buscar(id: Long): Usuario?
+    /** Insere (id = 0) ou atualiza. Retorna o id. */
+    suspend fun salvar(usuario: Usuario): Long
 }

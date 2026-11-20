@@ -1,5 +1,6 @@
 package br.com.comandapag.dados
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -10,8 +11,10 @@ import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.Pagamento
+import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.Usuario
 
 @Entity(tableName = "produtos")
 data class ProdutoEntity(
@@ -44,6 +47,10 @@ data class ComandaEntity(
     val pagamentoIdTransacao: String?,
     val pagamentoBandeira: String?,
     val pagamentoEm: Long?,
+    // Versão 2 do banco
+    @ColumnInfo(defaultValue = "0") val garcomId: Long = 0,
+    @ColumnInfo(defaultValue = "") val garcomNome: String = "",
+    val fechadaPor: String? = null,
 )
 
 @Entity(
@@ -99,6 +106,9 @@ data class ComandaComItens(
             taxaServico = c.taxaServico,
             fechadaEm = c.fechadaEm,
             pagamento = pagamento,
+            garcomId = c.garcomId,
+            garcomNome = c.garcomNome,
+            fechadaPor = c.fechadaPor,
         )
     }
 }
@@ -117,4 +127,39 @@ fun Comanda.paraEntidade() = ComandaEntity(
     pagamentoIdTransacao = pagamento?.idTransacao,
     pagamentoBandeira = pagamento?.bandeira,
     pagamentoEm = pagamento?.pagoEm,
+    garcomId = garcomId,
+    garcomNome = garcomNome,
+    fechadaPor = fechadaPor,
 )
+
+@Entity(tableName = "usuarios")
+data class UsuarioEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val nome: String,
+    /** Nomes das permissões separados por vírgula. */
+    val permissoes: String,
+    val ativo: Boolean,
+    val pinHash: String,
+    val pinSalt: String,
+) {
+    fun paraModelo() = Usuario(
+        id = id,
+        nome = nome,
+        permissoes = permissoes.split(',').filter { it.isNotBlank() }
+            .mapNotNull { nome -> Permissao.entries.firstOrNull { it.name == nome } }.toSet(),
+        ativo = ativo,
+        pinHash = pinHash,
+        pinSalt = pinSalt,
+    )
+
+    companion object {
+        fun de(u: Usuario) = UsuarioEntity(
+            id = u.id,
+            nome = u.nome,
+            permissoes = u.permissoes.sortedBy { it.ordinal }.joinToString(",") { it.name },
+            ativo = u.ativo,
+            pinHash = u.pinHash,
+            pinSalt = u.pinSalt,
+        )
+    }
+}

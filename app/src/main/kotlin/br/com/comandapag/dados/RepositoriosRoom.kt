@@ -2,8 +2,10 @@ package br.com.comandapag.dados
 
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.repositorio.ComandaRepository
 import br.com.comandapag.core.repositorio.ProdutoRepository
+import br.com.comandapag.core.repositorio.UsuarioRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -22,4 +24,11 @@ class ComandaRepositoryRoom(private val dao: ComandaDao) : ComandaRepository {
     override suspend fun buscarAbertaPorIdentificacao(identificacao: String): Comanda? =
         dao.buscarAbertaPorIdentificacao(identificacao)?.paraModelo()
     override suspend fun salvar(comanda: Comanda): Long = dao.salvar(comanda)
+}
+
+class UsuarioRepositoryRoom(private val dao: UsuarioDao) : UsuarioRepository {
+    override fun observarTodos(): Flow<List<Usuario>> = dao.observarTodos().map { l -> l.map { it.paraModelo() } }
+    override suspend fun listarTodos(): List<Usuario> = dao.listarTodos().map { it.paraModelo() }
+    override suspend fun buscar(id: Long): Usuario? = dao.buscar(id)?.paraModelo()
+    override suspend fun salvar(usuario: Usuario): Long = dao.salvar(UsuarioEntity.de(usuario))
 }

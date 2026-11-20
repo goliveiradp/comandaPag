@@ -25,6 +25,7 @@ object ExtratoComanda {
         linhas += centralizar("EXTRATO DE CONSUMO", colunas)
         linhas += separador
         linhas += "Comanda: ${comanda.identificacao}"
+        if (comanda.garcomNome.isNotBlank()) linhas += quebrar("Garçom: ${comanda.garcomNome}", colunas)
         linhas += "Aberta: ${formatarData(comanda.abertaEm)}"
         comanda.fechadaEm?.let { linhas += "Fechada: ${formatarData(it)}" }
         linhas += separador

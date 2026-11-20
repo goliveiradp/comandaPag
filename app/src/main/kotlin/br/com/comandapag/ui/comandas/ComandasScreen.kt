@@ -20,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +46,8 @@ import androidx.lifecycle.viewModelScope
 import br.com.comandapag.Dependencias
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Dinheiro
+import br.com.comandapag.core.modelo.Permissao
+import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.servico.RegraDeNegocioException
 import br.com.comandapag.ui.MensagemVazia
 import br.com.comandapag.ui.viewModelCom
@@ -61,10 +65,10 @@ class ComandasViewModel(private val deps: Dependencias) : ViewModel() {
 
     val erro = MutableStateFlow<String?>(null)
 
-    fun abrir(identificacao: String, taxaServico: Boolean, aoAbrir: (Long) -> Unit) {
+    fun abrir(identificacao: String, taxaServico: Boolean, responsavel: Usuario, aoAbrir: (Long) -> Unit) {
         viewModelScope.launch {
             try {
-                aoAbrir(deps.comandaService.abrir(identificacao, taxaServico).id)
+                aoAbrir(deps.comandaService.abrir(identificacao, responsavel, taxaServico).id)
             } catch (e: RegraDeNegocioException) {
                 // Se já existe aberta, leva direto para ela
                 val existente = deps.comandas.buscarAbertaPorIdentificacao(identificacao.trim())
@@ -75,43 +79,56 @@ class ComandasViewModel(private val deps: Dependencias) : ViewModel() {
 }
 
 @Composable
-fun ComandasScreen(modifier: Modifier = Modifier, aoAbrirComanda: (Long) -> Unit) {
+fun ComandasScreen(modifier: Modifier = Modifier, usuario: Usuario, aoAbrirComanda: (Long) -> Unit) {
     val vm = viewModelCom { ComandasViewModel(it) }
-    val abertas by vm.abertas.collectAsStateWithLifecycle()
+    val todas by vm.abertas.collectAsStateWithLifecycle()
+    var soMinhas by rememberSaveable { mutableStateOf(false) }
+    val abertas = if (soMinhas) todas.filter { it.garcomId == usuario.id } else todas
     val erro by vm.erro.collectAsStateWithLifecycle()
     val taxaPadrao by vm.taxaServicoPadrao.collectAsStateWithLifecycle()
     var mostrarNova by remember { mutableStateOf(false) }
 
-    Box(modifier.fillMaxSize()) {
-        if (abertas.isEmpty()) {
-            MensagemVazia("Nenhuma comanda aberta", "Toque em \"Nova comanda\" para começar.")
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(150.dp),
-                contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(abertas, key = { it.id }) { comanda ->
-                    CartaoComanda(comanda) { aoAbrirComanda(comanda.id) }
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !soMinhas, onClick = { soMinhas = false }, label = { Text("Todas (${todas.size})") })
+            FilterChip(
+                selected = soMinhas,
+                onClick = { soMinhas = true },
+                label = { Text("Minhas (${todas.count { it.garcomId == usuario.id }})") },
+            )
+        }
+        Box(Modifier.fillMaxSize()) {
+            if (abertas.isEmpty()) {
+                MensagemVazia("Nenhuma comanda aberta", "Toque em \"Nova comanda\" para começar.")
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(150.dp),
+                    contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(abertas, key = { it.id }) { comanda ->
+                        CartaoComanda(comanda) { aoAbrirComanda(comanda.id) }
+                    }
                 }
             }
+            ExtendedFloatingActionButton(
+                onClick = { mostrarNova = true },
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("Nova comanda") },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            )
         }
-        ExtendedFloatingActionButton(
-            onClick = { mostrarNova = true },
-            icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-            text = { Text("Nova comanda") },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-        )
     }
 
     if (mostrarNova) {
         DialogoNovaComanda(
             taxaPadrao = taxaPadrao,
+            podeAlterarTaxa = usuario.pode(Permissao.ALTERAR_TAXA_SERVICO),
             aoCancelar = { mostrarNova = false },
             aoConfirmar = { id, taxa ->
                 mostrarNova = false
-                vm.abrir(id, taxa, aoAbrirComanda)
+                vm.abrir(id, taxa, usuario, aoAbrirComanda)
             },
         )
     }
@@ -129,6 +146,9 @@ private fun CartaoComanda(comanda: Comanda, aoClicar: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = aoClicar)) {
         Column(Modifier.padding(16.dp)) {
             Text(comanda.identificacao, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+            if (comanda.garcomNome.isNotBlank()) {
+                Text(comanda.garcomNome, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
             Text(
                 "${comanda.quantidadeItens} ${if (comanda.quantidadeItens == 1) "item" else "itens"}",
                 style = MaterialTheme.typography.bodySmall,
@@ -147,6 +167,7 @@ private fun CartaoComanda(comanda: Comanda, aoClicar: () -> Unit) {
 @Composable
 private fun DialogoNovaComanda(
     taxaPadrao: Boolean,
+    podeAlterarTaxa: Boolean,
     aoCancelar: () -> Unit,
     aoConfirmar: (String, Boolean) -> Unit,
 ) {
@@ -171,7 +192,8 @@ private fun DialogoNovaComanda(
                 // Precisa ficar dentro do conteúdo do diálogo: só aqui o campo já está na tela.
                 LaunchedEffect(Unit) { runCatching { foco.requestFocus() } }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = taxa, onCheckedChange = { taxa = it })
+                    // Sem permissão, a comanda abre com o padrão definido nos Ajustes
+                    Checkbox(checked = taxa, onCheckedChange = { taxa = it }, enabled = podeAlterarTaxa)
                     Text("Cobrar 10% de serviço")
                 }
             }
