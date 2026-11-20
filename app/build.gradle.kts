@@ -50,6 +50,9 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+
+    // Esquemas exportados do banco, lidos pelos testes de migração (só na versão debug)
+    sourceSets["debug"].assets.srcDir("$projectDir/schemas")
 }
 
 ksp {

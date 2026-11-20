@@ -51,12 +51,22 @@ object ExtratoComanda {
         }
         linhas += colunasEsqDir("TOTAL", Dinheiro.formatar(comanda.totalCentavos), colunas)
 
-        comanda.pagamento?.let { p ->
+        if (comanda.pagamentos.isNotEmpty()) {
             linhas += separador
-            val parcelas = if (p.parcelas > 1) " ${p.parcelas}x" else ""
-            linhas += colunasEsqDir("Pago (${p.forma.descricao}$parcelas)", Dinheiro.formatar(p.valorCentavos), colunas)
-            p.bandeira?.takeIf { it.isNotBlank() }?.let { linhas += "Bandeira: $it" }
-            p.codigoTransacao?.takeIf { it.isNotBlank() }?.let { linhas += quebrar("Transação: $it", colunas) }
+            for (p in comanda.pagamentos) {
+                val parcelas = if (p.parcelas > 1) " ${p.parcelas}x" else ""
+                linhas += colunasEsqDir("${p.forma.descricao}$parcelas", Dinheiro.formatar(p.valorCentavos), colunas)
+                p.valorRecebidoCentavos?.takeIf { p.trocoCentavos > 0 }?.let {
+                    linhas += colunasEsqDir("   Recebido", Dinheiro.formatar(it), colunas)
+                    linhas += colunasEsqDir("   Troco", Dinheiro.formatar(p.trocoCentavos), colunas)
+                }
+                p.bandeira?.takeIf { it.isNotBlank() }?.let { linhas += "   Bandeira: $it" }
+                p.codigoTransacao?.takeIf { it.isNotBlank() }?.let { linhas += quebrar("   Transação: $it", colunas) }
+            }
+            linhas += colunasEsqDir("Total pago", Dinheiro.formatar(comanda.totalPagoCentavos), colunas)
+            if (comanda.restanteCentavos > 0) {
+                linhas += colunasEsqDir("FALTA PAGAR", Dinheiro.formatar(comanda.restanteCentavos), colunas)
+            }
         }
 
         linhas += separador
@@ -65,7 +75,7 @@ object ExtratoComanda {
     }
 
     fun dataPadrao(millis: Long): String =
-        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(Date(millis))
+        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.forLanguageTag("pt-BR")).format(Date(millis))
 
     internal fun colunasEsqDir(esquerda: String, direita: String, colunas: Int): String {
         val espaco = colunas - direita.length

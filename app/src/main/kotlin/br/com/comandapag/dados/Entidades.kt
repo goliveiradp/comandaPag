@@ -39,14 +39,15 @@ data class ComandaEntity(
     val status: String,
     val taxaServico: Boolean,
     val fechadaEm: Long?,
-    // Pagamento (nulo enquanto a comanda não for paga)
-    val pagamentoForma: String?,
-    val pagamentoValorCentavos: Long?,
-    val pagamentoParcelas: Int?,
-    val pagamentoCodigoTransacao: String?,
-    val pagamentoIdTransacao: String?,
-    val pagamentoBandeira: String?,
-    val pagamentoEm: Long?,
+    // Colunas da versão 1-2, quando a comanda tinha um só pagamento. Desde a v3 os
+    // pagamentos ficam na tabela `pagamentos`; a migração copia os antigos para lá.
+    val pagamentoForma: String? = null,
+    val pagamentoValorCentavos: Long? = null,
+    val pagamentoParcelas: Int? = null,
+    val pagamentoCodigoTransacao: String? = null,
+    val pagamentoIdTransacao: String? = null,
+    val pagamentoBandeira: String? = null,
+    val pagamentoEm: Long? = null,
     // Versão 2 do banco
     @ColumnInfo(defaultValue = "0") val garcomId: Long = 0,
     @ColumnInfo(defaultValue = "") val garcomNome: String = "",
@@ -77,24 +78,73 @@ data class ItemComandaEntity(
     val observacao: String,
 )
 
+@Entity(
+    tableName = "pagamentos",
+    foreignKeys = [
+        ForeignKey(
+            entity = ComandaEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["comandaId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("comandaId")],
+)
+data class PagamentoEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val comandaId: Long,
+    val posicao: Int,
+    val forma: String,
+    val valorCentavos: Long,
+    val parcelas: Int,
+    val codigoTransacao: String?,
+    val idTransacao: String?,
+    val bandeira: String?,
+    val pagoEm: Long,
+    val recebidoPor: String,
+    val valorRecebidoCentavos: Long?,
+    val trocoCentavos: Long,
+) {
+    fun paraModelo() = Pagamento(
+        forma = FormaPagamento.valueOf(forma),
+        valorCentavos = valorCentavos,
+        parcelas = parcelas,
+        codigoTransacao = codigoTransacao,
+        idTransacao = idTransacao,
+        bandeira = bandeira,
+        pagoEm = pagoEm,
+        recebidoPor = recebidoPor,
+        valorRecebidoCentavos = valorRecebidoCentavos,
+        trocoCentavos = trocoCentavos,
+    )
+
+    companion object {
+        fun de(comandaId: Long, posicao: Int, p: Pagamento) = PagamentoEntity(
+            comandaId = comandaId,
+            posicao = posicao,
+            forma = p.forma.name,
+            valorCentavos = p.valorCentavos,
+            parcelas = p.parcelas,
+            codigoTransacao = p.codigoTransacao,
+            idTransacao = p.idTransacao,
+            bandeira = p.bandeira,
+            pagoEm = p.pagoEm,
+            recebidoPor = p.recebidoPor,
+            valorRecebidoCentavos = p.valorRecebidoCentavos,
+            trocoCentavos = p.trocoCentavos,
+        )
+    }
+}
+
 data class ComandaComItens(
     @Embedded val comanda: ComandaEntity,
     @Relation(parentColumn = "id", entityColumn = "comandaId")
     val itens: List<ItemComandaEntity>,
+    @Relation(parentColumn = "id", entityColumn = "comandaId")
+    val pagamentos: List<PagamentoEntity>,
 ) {
     fun paraModelo(): Comanda {
         val c = comanda
-        val pagamento = c.pagamentoForma?.let { forma ->
-            Pagamento(
-                forma = FormaPagamento.valueOf(forma),
-                valorCentavos = c.pagamentoValorCentavos ?: 0,
-                parcelas = c.pagamentoParcelas ?: 1,
-                codigoTransacao = c.pagamentoCodigoTransacao,
-                idTransacao = c.pagamentoIdTransacao,
-                bandeira = c.pagamentoBandeira,
-                pagoEm = c.pagamentoEm ?: 0,
-            )
-        }
         return Comanda(
             id = c.id,
             identificacao = c.identificacao,
@@ -105,7 +155,7 @@ data class ComandaComItens(
             status = StatusComanda.valueOf(c.status),
             taxaServico = c.taxaServico,
             fechadaEm = c.fechadaEm,
-            pagamento = pagamento,
+            pagamentos = pagamentos.sortedBy { it.posicao }.map { it.paraModelo() },
             garcomId = c.garcomId,
             garcomNome = c.garcomNome,
             fechadaPor = c.fechadaPor,
@@ -120,13 +170,6 @@ fun Comanda.paraEntidade() = ComandaEntity(
     status = status.name,
     taxaServico = taxaServico,
     fechadaEm = fechadaEm,
-    pagamentoForma = pagamento?.forma?.name,
-    pagamentoValorCentavos = pagamento?.valorCentavos,
-    pagamentoParcelas = pagamento?.parcelas,
-    pagamentoCodigoTransacao = pagamento?.codigoTransacao,
-    pagamentoIdTransacao = pagamento?.idTransacao,
-    pagamentoBandeira = pagamento?.bandeira,
-    pagamentoEm = pagamento?.pagoEm,
     garcomId = garcomId,
     garcomNome = garcomNome,
     fechadaPor = fechadaPor,

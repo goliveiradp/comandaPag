@@ -16,8 +16,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ComandaServiceTest {
@@ -115,12 +115,13 @@ class ComandaServiceTest {
         val s = terminal.solicitacoes.single()
         assertEquals(2640, s.valorCentavos)
         assertEquals(2, s.parcelas)
-        assertEquals("CMD${c.id}", s.referencia)
+        assertEquals("C${c.id}P1", s.referencia)
 
         val paga = repo.buscar(c.id)!!
         assertEquals(StatusComanda.PAGA, paga.status)
-        assertEquals(2640, paga.pagamento!!.valorCentavos)
-        assertEquals("COD1", paga.pagamento!!.codigoTransacao)
+        assertEquals(2640, paga.pagamentos.single().valorCentavos)
+        assertEquals("COD1", paga.pagamentos.single().codigoTransacao)
+        assertEquals("Ana", paga.pagamentos.single().recebidoPor)
         assertEquals("Ana", paga.fechadaPor)
         assertFailsWith<RegraDeNegocioException> { service.adicionarItem(c.id, cerveja) }
     }
@@ -134,7 +135,7 @@ class ComandaServiceTest {
         assertIs<ResultadoPagamento.Recusado>(r)
         val aberta = repo.buscar(c.id)!!
         assertTrue(aberta.estaAberta)
-        assertNull(aberta.pagamento)
+        assertTrue(aberta.pagamentos.isEmpty())
     }
 
     @Test
@@ -183,6 +184,123 @@ class ComandaServiceTest {
 
     @Test
     fun referenciaTemNoMaximoDezCaracteres() {
-        assertEquals("CMD1234567", ComandaService.referencia(123456789))
+        assertEquals("C7P2", ComandaService.referencia(7, 2))
+        assertEquals("C123456789", ComandaService.referencia(123456789, 3))
+    }
+
+    @Test
+    fun divideAContaEmTresComFormasDiferentes() = runTest {
+        val c = service.abrir("Mesa 1", garcom)
+        service.adicionarItem(c.id, Produto(id = 9, nome = "Rodízio", precoCentavos = 10000)) // R$ 100,00
+
+        // Pessoa 1: PIX de 1/3 (arredondado para cima)
+        val parte1 = ComandaService.valorPorPessoa(10000, 3)
+        assertEquals(3334, parte1)
+        assertIs<ResultadoPagamento.Aprovado>(
+            service.cobrar(c.id, FormaPagamento.PIX, operador = garcom, valorCentavos = parte1),
+        )
+        assertEquals(6666, repo.buscar(c.id)!!.restanteCentavos)
+        assertTrue(repo.buscar(c.id)!!.estaAberta)
+
+        // Pessoa 2: dinheiro, entrega R$ 50,00 para pagar 33,33 -> troco 16,67
+        val parte2 = ComandaService.valorPorPessoa(6666, 2)
+        assertEquals(3333, parte2)
+        val r = service.receberDinheiro(c.id, recebidoCentavos = 5000, operador = garcom, valorCentavos = parte2)
+        assertEquals(1667, r.trocoCentavos)
+        assertFalse(r.quitada)
+
+        // Pessoa 3: crédito do resto (sem informar valor = tudo o que falta)
+        service.cobrar(c.id, FormaPagamento.CREDITO, operador = garcom)
+        assertEquals(3333, terminal.solicitacoes.last().valorCentavos)
+        assertEquals("C${c.id}P3", terminal.solicitacoes.last().referencia)
+
+        val paga = repo.buscar(c.id)!!
+        assertEquals(StatusComanda.PAGA, paga.status)
+        assertEquals(listOf(3334L, 3333L, 3333L), paga.pagamentos.map { it.valorCentavos })
+        assertEquals(10000, paga.totalPagoCentavos)
+        assertEquals(0, paga.restanteCentavos)
+    }
+
+    @Test
+    fun dinheiroComTrocoQuitaAComanda() = runTest {
+        val c = service.abrir("1", garcom)
+        service.adicionarItem(c.id, cerveja, 2) // 24,00
+        val r = service.receberDinheiro(c.id, recebidoCentavos = 5000, operador = garcom)
+        assertEquals(2600, r.trocoCentavos)
+        assertTrue(r.quitada)
+        val p = repo.buscar(c.id)!!.pagamentos.single()
+        assertEquals(2400, p.valorCentavos)
+        assertEquals(5000, p.valorRecebidoCentavos)
+        assertEquals("Ana", repo.buscar(c.id)!!.fechadaPor)
+        assertTrue(terminal.solicitacoes.isEmpty(), "dinheiro não passa pela maquininha")
+    }
+
+    @Test
+    fun dinheiroAbaixoDoValorAbateSoOQueFoiEntregue() = runTest {
+        val c = service.abrir("1", garcom)
+        service.adicionarItem(c.id, cerveja, 2) // 24,00
+        val r = service.receberDinheiro(c.id, recebidoCentavos = 1000, operador = garcom)
+        assertEquals(0, r.trocoCentavos)
+        assertFalse(r.quitada)
+        assertEquals(1400, r.comanda.restanteCentavos)
+    }
+
+    @Test
+    fun recusadoNaoRegistraPagamentoParcial() = runTest {
+        val c = service.abrir("1", garcom)
+        service.adicionarItem(c.id, cerveja, 2)
+        terminal.resposta = ResultadoPagamento.Recusado("NEGADA")
+        service.cobrar(c.id, FormaPagamento.DEBITO, operador = garcom, valorCentavos = 1000)
+        assertTrue(repo.buscar(c.id)!!.pagamentos.isEmpty())
+    }
+
+    @Test
+    fun valoresInvalidosNaDivisao() = runTest {
+        val c = service.abrir("1", garcom)
+        service.adicionarItem(c.id, cerveja) // 12,00
+        assertFailsWith<RegraDeNegocioException> {
+            service.cobrar(c.id, FormaPagamento.PIX, operador = garcom, valorCentavos = 1300)
+        }
+        assertFailsWith<RegraDeNegocioException> {
+            service.cobrar(c.id, FormaPagamento.PIX, operador = garcom, valorCentavos = 0)
+        }
+        assertFailsWith<RegraDeNegocioException> {
+            service.cobrar(c.id, FormaPagamento.DINHEIRO, operador = garcom)
+        }
+        assertFailsWith<RegraDeNegocioException> {
+            service.receberDinheiro(c.id, recebidoCentavos = 0, operador = garcom)
+        }
+        assertFailsWith<SemPermissaoException> {
+            service.receberDinheiro(c.id, recebidoCentavos = 2000, operador = semCobrar)
+        }
+        assertTrue(terminal.solicitacoes.isEmpty())
+    }
+
+    @Test
+    fun depoisDePagarParteNaoPodeReduzirAbaixoDoPago() = runTest {
+        val c = service.abrir("1", garcom)
+        service.adicionarItem(c.id, cerveja, 3) // 36,00
+        service.cobrar(c.id, FormaPagamento.PIX, operador = garcom, valorCentavos = 3000)
+
+        // 36 -> 24: abaixo dos 30 já pagos
+        assertFailsWith<RegraDeNegocioException> { service.alterarQuantidade(c.id, 0, 2, gerente) }
+        assertFailsWith<RegraDeNegocioException> { service.cancelar(c.id, gerente) }
+        // Adicionar continua liberado
+        service.adicionarItem(c.id, cerveja)
+        assertEquals(1800, repo.buscar(c.id)!!.restanteCentavos)
+        // 48 -> 36 ainda fica acima dos 30 pagos
+        service.alterarQuantidade(c.id, 0, 3, gerente)
+        assertEquals(600, repo.buscar(c.id)!!.restanteCentavos)
+    }
+
+    @Test
+    fun valorPorPessoaFechaASoma() {
+        for (total in listOf(1L, 99L, 10000L, 12345L)) {
+            for (pessoas in 1..7) {
+                var restante = total
+                for (p in pessoas downTo 1) restante -= ComandaService.valorPorPessoa(restante, p)
+                assertEquals(0, restante, "total=$total pessoas=$pessoas")
+            }
+        }
     }
 }

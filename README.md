@@ -8,6 +8,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Login, usuários e autorização](docs/acesso.png)
 
+![Divisão da conta, dinheiro e troco](docs/divisao.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -16,7 +18,14 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 - **Comandas**: abrir por número, mesa ou nome do cliente; lançar itens com
   quantidade e observação; alterar/remover itens; taxa de serviço de 10% opcional.
 - **Cobrança na maquininha**: crédito (à vista ou parcelado em até 12x), débito e PIX.
-  Se aprovado, a comanda é fechada automaticamente.
+- **Dinheiro com troco**: informe quanto o cliente entregou (atalhos de R$ 10, 20,
+  50 e 100) e o app mostra o troco.
+- **Dividir a conta e pagamento misto**: a comanda aceita vários pagamentos, em
+  formas diferentes (ex.: parte no PIX, parte em dinheiro, o resto no crédito).
+  Em "Dividir em N pessoas" o app sugere o valor de cada um, distribuindo os
+  centavos para fechar exato. A comanda só fecha quando não falta nada; a tela
+  mostra "Pago" e "Falta". Depois de receber parte, não é possível remover itens
+  abaixo do valor já pago nem cancelar a comanda.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou

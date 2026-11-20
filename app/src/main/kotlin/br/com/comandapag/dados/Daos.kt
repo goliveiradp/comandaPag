@@ -58,7 +58,13 @@ abstract class ComandaDao {
     @Query("DELETE FROM itens_comanda WHERE comandaId = :comandaId")
     protected abstract suspend fun apagarItens(comandaId: Long)
 
-    /** Salva a comanda e substitui todos os seus itens numa única transação. */
+    @Insert
+    protected abstract suspend fun inserirPagamentos(pagamentos: List<PagamentoEntity>)
+
+    @Query("DELETE FROM pagamentos WHERE comandaId = :comandaId")
+    protected abstract suspend fun apagarPagamentos(comandaId: Long)
+
+    /** Salva a comanda e substitui todos os seus itens e pagamentos numa única transação. */
     @Transaction
     open suspend fun salvar(comanda: Comanda): Long {
         val entidade = comanda.paraEntidade()
@@ -77,6 +83,8 @@ abstract class ComandaDao {
                 )
             },
         )
+        apagarPagamentos(id)
+        inserirPagamentos(comanda.pagamentos.mapIndexed { i, p -> PagamentoEntity.de(id, i, p) })
         return id
     }
 }

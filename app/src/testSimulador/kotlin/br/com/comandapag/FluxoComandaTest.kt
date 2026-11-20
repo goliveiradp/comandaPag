@@ -57,15 +57,14 @@ class FluxoComandaTest : TesteDeTela() {
         esperarTexto("R$ 59,90") // 2 x 12,00 + 35,90
         capturar("04-comanda")
 
-        // Cobrar no crédito
-        regra.onNodeWithText("Cobrar").performClick()
-        esperarTexto("Cobrar R$ 59,90")
+        // Receber tudo no crédito
+        regra.onNodeWithText("Receber").performClick()
+        esperarTexto("Valor deste pagamento")
         capturar("05-forma-pagamento")
-        // O botão "Cobrar" do diálogo é o último nó com esse texto
-        val botoes = regra.onAllNodesWithText("Cobrar")
-        botoes[botoes.fetchSemanticsNodes().size - 1].performClick()
+        clicar("Cobrar")
 
         esperarTexto("Pagamento aprovado")
+        esperarTexto("Comanda paga")
         capturar("06-pagamento-aprovado")
         regra.onNodeWithText("Concluir").performClick()
 

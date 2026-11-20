@@ -27,15 +27,20 @@ abstract class TesteDeTela {
     val regra = createAndroidComposeRule<MainActivity>()
 
     /** Espera o texto aparecer, avançando o relógio do Robolectric (a maquininha simulada usa delay). */
-    fun esperarTexto(texto: String) = regra.waitUntil(timeoutMillis = 15_000) {
-        ShadowLooper.idleMainLooper(200, TimeUnit.MILLISECONDS)
+    fun esperarTexto(texto: String) = regra.waitUntil(timeoutMillis = 30_000) {
+        ShadowLooper.idleMainLooper(500, TimeUnit.MILLISECONDS)
         regra.onAllNodes(hasText(texto, substring = true)).fetchSemanticsNodes().isNotEmpty()
     }
 
     fun campo(rotulo: String): SemanticsNodeInteraction = regra.onNode(hasSetTextAction() and hasText(rotulo))
 
+    /**
+     * Clica no elemento com o [texto]. Se houver mais de um (ex.: um botão na tela e outro
+     * no diálogo aberto por cima), usa o último, que é o do diálogo.
+     */
     fun clicar(texto: String) {
-        val no = regra.onNode(hasText(texto) and hasClickAction())
+        val nos = regra.onAllNodes(hasText(texto) and hasClickAction())
+        val no = nos[nos.fetchSemanticsNodes().size - 1]
         runCatching { no.performScrollTo() }
         no.performClick()
     }

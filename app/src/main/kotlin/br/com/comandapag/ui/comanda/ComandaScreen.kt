@@ -66,6 +66,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val produtos by vm.produtos.collectAsStateWithLifecycle()
     val cobranca by vm.cobranca.collectAsStateWithLifecycle()
     val aviso by vm.aviso.collectAsStateWithLifecycle()
+    val pessoas by vm.pessoasRestantes.collectAsStateWithLifecycle()
     val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
     val autorizador = rememberAutorizador()
     // Quem vai cobrar (o próprio usuário ou quem autorizou)
@@ -180,13 +181,19 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
 
     val quemCobra = cobrador
     if (quemCobra != null && c != null) {
-        DialogoCobrar(
-            totalCentavos = c.totalCentavos,
+        DialogoReceber(
+            comanda = c,
+            pessoas = pessoas,
+            aoMudarPessoas = { vm.pessoasRestantes.value = it },
             simulada = vm.maquininhaSimulada,
             aoCancelar = { cobrador = null },
-            aoConfirmar = { forma, parcelas ->
+            aoCobrar = { forma, valor, parcelas ->
                 cobrador = null
-                vm.cobrar(forma, parcelas, quemCobra)
+                vm.cobrar(forma, valor, parcelas, quemCobra)
+            },
+            aoReceberDinheiro = { valor, recebido ->
+                cobrador = null
+                vm.receberDinheiro(valor, recebido, quemCobra)
             },
         )
     }
@@ -195,10 +202,14 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
         estado = cobranca,
         aoCancelarOperacao = vm::cancelarCobranca,
         aoImprimirExtrato = vm::imprimirExtrato,
-        aoFechar = {
-            val aprovada = cobranca is EstadoCobranca.Aprovada
+        aoProximoPagamento = {
             vm.fecharResultadoCobranca()
-            if (aprovada) aoVoltar()
+            autorizador.exigir(Permissao.COBRAR) { cobrador = it }
+        },
+        aoFechar = {
+            val quitada = (cobranca as? EstadoCobranca.Aprovada)?.quitada == true
+            vm.fecharResultadoCobranca()
+            if (quitada) aoVoltar()
         },
     )
 
@@ -275,15 +286,33 @@ private fun Resumo(
                     fontWeight = FontWeight.Bold,
                 )
             }
-            comanda.pagamento?.let { p ->
-                val parcelas = if (p.parcelas > 1) " em ${p.parcelas}x" else ""
-                Text(
-                    "Pago no ${p.forma.descricao}$parcelas · ${ExtratoComanda.dataPadrao(p.pagoEm)}" +
-                        (p.bandeira?.let { " · $it" } ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+            comanda.pagamentos.forEach { p ->
+                val parcelas = if (p.parcelas > 1) " ${p.parcelas}x" else ""
+                val troco = if (p.trocoCentavos > 0) " (troco ${Dinheiro.formatar(p.trocoCentavos)})" else ""
+                Row(Modifier.padding(top = 2.dp)) {
+                    Text(
+                        "${p.forma.descricao}$parcelas · ${ExtratoComanda.dataPadrao(p.pagoEm)}$troco",
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        Dinheiro.formatar(p.valorCentavos),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (comanda.estaAberta && comanda.totalPagoCentavos > 0) {
+                Row {
+                    Text("Falta", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        Dinheiro.formatar(comanda.restanteCentavos),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             if (comanda.estaAberta) {
                 Row(
@@ -297,9 +326,9 @@ private fun Resumo(
                     }
                     Button(
                         onClick = aoCobrar,
-                        enabled = comanda.totalCentavos > 0,
+                        enabled = comanda.restanteCentavos > 0,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Cobrar") }
+                    ) { Text(if (comanda.totalPagoCentavos > 0) "Receber resto" else "Receber") }
                 }
             }
         }

@@ -96,6 +96,7 @@ class PlugPagTerminal(private val context: Context) : TerminalPagamento, Impress
         FormaPagamento.CREDITO -> PlugPag.TYPE_CREDITO
         FormaPagamento.DEBITO -> PlugPag.TYPE_DEBITO
         FormaPagamento.PIX -> PlugPag.TYPE_PIX
+        FormaPagamento.DINHEIRO -> throw IllegalArgumentException("Dinheiro não passa pela maquininha")
     }
 
     private companion object {

@@ -1,6 +1,7 @@
 package br.com.comandapag.core.servico
 
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.Pagamento
@@ -14,6 +15,11 @@ import br.com.comandapag.core.pagamento.TerminalPagamento
 import br.com.comandapag.core.repositorio.ComandaRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** Resultado de um recebimento em dinheiro. */
+data class RecebimentoDinheiro(val trocoCentavos: Long, val comanda: Comanda) {
+    val quitada: Boolean get() = comanda.status == StatusComanda.PAGA
+}
 
 open class RegraDeNegocioException(mensagem: String) : Exception(mensagem)
 
@@ -89,7 +95,7 @@ class ComandaService(
         if (quantidade < comanda.itens[indice].quantidade) exigir(operador, Permissao.REMOVER_ITENS)
         val itens = comanda.itens.toMutableList()
         if (quantidade == 0) itens.removeAt(indice) else itens[indice] = itens[indice].copy(quantidade = quantidade)
-        salvar(comanda.copy(itens = itens))
+        salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
     }
 
     suspend fun removerItem(comandaId: Long, indice: Int, operador: Usuario): Comanda =
@@ -99,13 +105,17 @@ class ComandaService(
         val comanda = comandaAberta(comandaId)
         if (comanda.taxaServico == ativa) return@withLock comanda
         exigir(operador, Permissao.ALTERAR_TAXA_SERVICO)
-        salvar(comanda.copy(taxaServico = ativa))
+        salvar(semFicarAbaixoDoPago(comanda.copy(taxaServico = ativa)))
     }
 
     suspend fun cancelar(comandaId: Long, operador: Usuario): Comanda = trava.withLock {
         exigir(operador, Permissao.CANCELAR_COMANDA)
+        val comanda = comandaAberta(comandaId)
+        if (comanda.pagamentos.isNotEmpty()) {
+            erro("A comanda já tem pagamentos. Estorne-os antes de cancelar.")
+        }
         salvar(
-            comandaAberta(comandaId).copy(
+            comanda.copy(
                 status = StatusComanda.CANCELADA,
                 fechadaEm = agora(),
                 fechadaPor = operador.nome,
@@ -114,8 +124,8 @@ class ComandaService(
     }
 
     /**
-     * Cobra o total da comanda na maquininha. Se aprovado, a comanda é marcada como paga.
-     * Retorna o resultado da transação (aprovada ou recusada).
+     * Cobra [valorCentavos] na maquininha (crédito, débito ou PIX). Sem valor, cobra tudo o que falta.
+     * Se aprovado, registra o pagamento; a comanda fecha quando não falta mais nada.
      * A comanda fica travada durante a cobrança, para que o valor não mude no meio.
      */
     suspend fun cobrar(
@@ -123,46 +133,107 @@ class ComandaService(
         forma: FormaPagamento,
         parcelas: Int = 1,
         operador: Usuario,
+        valorCentavos: Long? = null,
         aoMudarStatus: (String) -> Unit = {},
     ): ResultadoPagamento = trava.withLock {
         exigir(operador, Permissao.COBRAR)
+        if (!forma.naMaquininha) erro("Use o recebimento em dinheiro para essa forma de pagamento.")
         val comanda = comandaAberta(comandaId)
-        val total = comanda.totalCentavos
-        if (total <= 0) erro("A comanda está vazia.")
-        if (total > Int.MAX_VALUE) erro("Valor acima do limite da maquininha.")
+        val restante = comanda.restanteCentavos
+        if (comanda.totalCentavos <= 0) erro("A comanda está vazia.")
+        val valor = valorCentavos ?: restante
+        if (valor <= 0) erro("Informe um valor maior que zero.")
+        if (valor > restante) erro("O valor é maior do que falta pagar (${Dinheiro.formatar(restante)}).")
+        if (valor > Int.MAX_VALUE) erro("Valor acima do limite da maquininha.")
         if (parcelas < 1 || parcelas > MAX_PARCELAS) erro("Número de parcelas inválido.")
         if (parcelas > 1 && forma != FormaPagamento.CREDITO) erro("Parcelamento só é possível no crédito.")
 
         val resultado = terminal.cobrar(
             SolicitacaoPagamento(
                 forma = forma,
-                valorCentavos = total,
+                valorCentavos = valor,
                 parcelas = parcelas,
-                referencia = referencia(comanda.id),
+                referencia = referencia(comanda.id, comanda.pagamentos.size + 1),
             ),
             aoMudarStatus,
         )
 
         if (resultado is ResultadoPagamento.Aprovado) {
-            val momento = agora()
-            salvar(
-                comanda.copy(
-                    status = StatusComanda.PAGA,
-                    fechadaEm = momento,
-                    fechadaPor = operador.nome,
-                    pagamento = Pagamento(
-                        forma = forma,
-                        valorCentavos = total,
-                        parcelas = parcelas,
-                        codigoTransacao = resultado.codigoTransacao,
-                        idTransacao = resultado.idTransacao,
-                        bandeira = resultado.bandeira,
-                        pagoEm = momento,
-                    ),
+            registrar(
+                comanda,
+                Pagamento(
+                    forma = forma,
+                    valorCentavos = valor,
+                    parcelas = parcelas,
+                    codigoTransacao = resultado.codigoTransacao,
+                    idTransacao = resultado.idTransacao,
+                    bandeira = resultado.bandeira,
+                    pagoEm = agora(),
+                    recebidoPor = operador.nome,
                 ),
+                operador,
             )
         }
         resultado
+    }
+
+    /**
+     * Recebe dinheiro. [valorCentavos] é a parte a pagar (sem valor = tudo o que falta) e
+     * [recebidoCentavos] é o que o cliente entregou. Se entregou mais, a diferença é troco;
+     * se entregou menos, abate só o que foi entregue.
+     */
+    suspend fun receberDinheiro(
+        comandaId: Long,
+        recebidoCentavos: Long,
+        operador: Usuario,
+        valorCentavos: Long? = null,
+    ): RecebimentoDinheiro = trava.withLock {
+        exigir(operador, Permissao.COBRAR)
+        val comanda = comandaAberta(comandaId)
+        val restante = comanda.restanteCentavos
+        if (comanda.totalCentavos <= 0) erro("A comanda está vazia.")
+        val parte = valorCentavos ?: restante
+        if (parte <= 0) erro("Informe um valor maior que zero.")
+        if (parte > restante) erro("O valor é maior do que falta pagar (${Dinheiro.formatar(restante)}).")
+        if (recebidoCentavos <= 0) erro("Informe quanto o cliente entregou.")
+
+        val abatido = minOf(parte, recebidoCentavos)
+        val troco = recebidoCentavos - abatido
+        val atualizada = registrar(
+            comanda,
+            Pagamento(
+                forma = FormaPagamento.DINHEIRO,
+                valorCentavos = abatido,
+                pagoEm = agora(),
+                recebidoPor = operador.nome,
+                valorRecebidoCentavos = recebidoCentavos,
+                trocoCentavos = troco,
+            ),
+            operador,
+        )
+        RecebimentoDinheiro(trocoCentavos = troco, comanda = atualizada)
+    }
+
+    /** Acrescenta o pagamento e fecha a comanda se ela ficou quitada. */
+    private suspend fun registrar(comanda: Comanda, pagamento: Pagamento, operador: Usuario): Comanda {
+        val comPagamento = comanda.copy(pagamentos = comanda.pagamentos + pagamento)
+        val final = if (comPagamento.restanteCentavos == 0L) {
+            comPagamento.copy(status = StatusComanda.PAGA, fechadaEm = pagamento.pagoEm, fechadaPor = operador.nome)
+        } else {
+            comPagamento
+        }
+        return salvar(final)
+    }
+
+    /** Depois de receber parte da conta, o total não pode ficar menor do que já foi pago. */
+    private fun semFicarAbaixoDoPago(comanda: Comanda): Comanda {
+        if (comanda.totalCentavos < comanda.totalPagoCentavos) {
+            erro(
+                "Já foram pagos ${Dinheiro.formatar(comanda.totalPagoCentavos)} desta comanda; " +
+                    "o total não pode ficar menor que isso.",
+            )
+        }
+        return comanda
     }
 
     private suspend fun comandaAberta(id: Long): Comanda {
@@ -185,7 +256,21 @@ class ComandaService(
     companion object {
         const val MAX_PARCELAS = 12
 
-        /** A PagBank aceita até 10 caracteres alfanuméricos na referência da venda. */
-        fun referencia(comandaId: Long): String = "CMD$comandaId".take(10)
+        /**
+         * Referência da venda na PagBank: até 10 caracteres alfanuméricos.
+         * Ex.: comanda 42, 2º pagamento = "C42P2".
+         */
+        fun referencia(comandaId: Long, numeroPagamento: Int = 1): String =
+            "C${comandaId}P$numeroPagamento".take(10)
+
+        /**
+         * Valor sugerido para cada pessoa ao dividir [restanteCentavos] entre [pessoas].
+         * Arredonda para cima, então a última pessoa paga o que sobrar e a soma fecha exata
+         * (ex.: R$ 100,00 / 3 = 33,34 + 33,33 + 33,33).
+         */
+        fun valorPorPessoa(restanteCentavos: Long, pessoas: Int): Long {
+            require(pessoas >= 1) { "pessoas deve ser >= 1" }
+            return (restanteCentavos + pessoas - 1) / pessoas
+        }
     }
 }

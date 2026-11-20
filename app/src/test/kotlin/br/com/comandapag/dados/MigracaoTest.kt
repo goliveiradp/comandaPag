@@ -3,7 +3,10 @@ package br.com.comandapag.dados
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.core.app.ApplicationProvider
+import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.StatusComanda
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -13,19 +16,26 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Garante que quem já usava a versão 1 do app não perde as comandas ao atualizar. */
+/** Garante que quem já usava uma versão anterior do app não perde as comandas ao atualizar. */
 @RunWith(RobolectricTestRunner::class)
 class MigracaoTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Test
-    fun migraDaVersao1ParaAVersao2MantendoOsDados() = runBlocking {
+    fun migraDaVersao1AteAAtualMantendoOsDados() = runBlocking {
         val arquivo = context.getDatabasePath("migracao-teste.db").apply { parentFile?.mkdirs(); delete() }
 
         // Banco exatamente como a versão 1 do app criava
         SQLiteDatabase.openOrCreateDatabase(arquivo, null).use { db ->
             V1.forEach(db::execSQL)
             db.execSQL("INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico) VALUES (1, 'Mesa 3', 100, 'ABERTA', 1)")
+            // Comanda paga na v1 (pagamento único nas colunas da própria comanda)
+            db.execSQL(
+                "INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico, fechadaEm, pagamentoForma, " +
+                    "pagamentoValorCentavos, pagamentoParcelas, pagamentoCodigoTransacao, pagamentoIdTransacao, " +
+                    "pagamentoBandeira, pagamentoEm) VALUES (2, 'Mesa 5', 100, 'PAGA', 0, 200, 'CREDITO', 1500, 3, " +
+                    "'TX9', 'ID9', 'VISA', 200)",
+            )
             db.execSQL(
                 "INSERT INTO itens_comanda (comandaId, posicao, produtoId, nome, precoUnitarioCentavos, quantidade, observacao) " +
                     "VALUES (1, 0, 7, 'Cerveja', 1200, 2, '')",
@@ -34,7 +44,7 @@ class MigracaoTest {
         }
 
         val banco = Room.databaseBuilder(context, BancoDeDados::class.java, arquivo.absolutePath)
-            .addMigrations(BancoDeDados.MIGRACAO_1_2)
+            .addMigrations(BancoDeDados.MIGRACAO_1_2, BancoDeDados.MIGRACAO_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -44,9 +54,47 @@ class MigracaoTest {
             assertEquals(2640, comanda.totalCentavos)
             assertEquals("", comanda.garcomNome)
             assertNull(comanda.fechadaPor)
+            assertTrue(comanda.pagamentos.isEmpty())
             assertTrue(UsuarioRepositoryRoom(banco.usuarioDao()).listarTodos().isEmpty())
+
+            // O pagamento antigo foi para a tabela nova
+            val paga = ComandaRepositoryRoom(banco.comandaDao()).buscar(2)!!
+            val p = paga.pagamentos.single()
+            assertEquals(FormaPagamento.CREDITO, p.forma)
+            assertEquals(1500, p.valorCentavos)
+            assertEquals(3, p.parcelas)
+            assertEquals("TX9", p.codigoTransacao)
+            assertEquals("VISA", p.bandeira)
+            assertEquals(200, p.pagoEm)
+            assertEquals(0, paga.restanteCentavos)
         } finally {
             banco.close()
+        }
+    }
+
+    @Test
+    fun migracao2Para3BateComOEsquemaExportado() {
+        // Cria o banco a partir do esquema v2 exportado e valida a migração contra o esquema v3
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-2-3.db"
+        helper.createDatabase(nome, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico, pagamentoForma, " +
+                    "pagamentoValorCentavos, pagamentoEm, garcomId, garcomNome, fechadaPor) " +
+                    "VALUES (7, 'Mesa 7', 1, 'PAGA', 0, 'PIX', 990, 2, 3, 'Ana', 'Ana')",
+            )
+        }
+        helper.runMigrationsAndValidate(nome, 3, true, BancoDeDados.MIGRACAO_2_3).use { db ->
+            db.query("SELECT forma, valorCentavos, recebidoPor FROM pagamentos WHERE comandaId = 7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("PIX", c.getString(0))
+                assertEquals(990, c.getLong(1))
+                assertEquals("Ana", c.getString(2))
+            }
+            db.query("SELECT pagamentoForma FROM comandas WHERE id = 7").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+            }
         }
     }
 

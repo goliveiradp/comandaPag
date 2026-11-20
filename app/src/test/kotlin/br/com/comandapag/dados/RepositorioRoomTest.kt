@@ -39,17 +39,20 @@ class RepositorioRoomTest {
         assertEquals(id, comandas.buscarAbertaPorIdentificacao("mesa 1")!!.id)
         assertEquals(1, comandas.observarAbertas().first().size)
 
-        val pagamento = Pagamento(FormaPagamento.PIX, 5990, 1, "C", "I", null, 20)
+        val pagamentos = listOf(
+            Pagamento(FormaPagamento.PIX, 1000, 1, "C", "I", null, 20, recebidoPor = "Ana"),
+            Pagamento(FormaPagamento.DINHEIRO, 200, pagoEm = 21, valorRecebidoCentavos = 500, trocoCentavos = 300),
+        )
         comandas.salvar(
             comandas.buscar(id)!!.copy(
-                itens = itens.take(1), status = StatusComanda.PAGA, fechadaEm = 20, pagamento = pagamento, fechadaPor = "Bruno",
+                itens = itens.take(1), status = StatusComanda.PAGA, fechadaEm = 20, pagamentos = pagamentos, fechadaPor = "Bruno",
             ),
         )
         val paga = comandas.buscar(id)!!
         assertEquals("Ana", paga.garcomNome)
         assertEquals(5L, paga.garcomId)
         assertEquals("Bruno", paga.fechadaPor)
-        assertEquals(pagamento, paga.pagamento)
+        assertEquals(pagamentos, paga.pagamentos)
         assertEquals(1, paga.itens.size)
         assertNull(comandas.buscarAbertaPorIdentificacao("Mesa 1"))
         assertEquals(1, comandas.observarFechadas().first().size)

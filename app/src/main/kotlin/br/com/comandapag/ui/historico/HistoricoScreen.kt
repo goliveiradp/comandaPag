@@ -63,7 +63,7 @@ fun HistoricoScreen(modifier: Modifier = Modifier, aoAbrirComanda: (Long) -> Uni
                     Column {
                         Text(
                             (c.fechadaEm?.let(ExtratoComanda::dataPadrao) ?: "") + " · " +
-                                if (cancelada) "Cancelada" else (c.pagamento?.forma?.descricao ?: ""),
+                                if (cancelada) "Cancelada" else c.pagamentos.map { it.forma.descricao }.distinct().joinToString(" + "),
                         )
                         if (c.garcomNome.isNotBlank()) Text("Garçom: ${c.garcomNome}")
                     }
@@ -88,17 +88,17 @@ private fun ResumoDoDia(pagas: List<Comanda>) {
         Column(Modifier.padding(16.dp)) {
             Text("Vendas de hoje", style = MaterialTheme.typography.labelLarge)
             Text(
-                Dinheiro.formatar(pagas.sumOf { it.pagamento?.valorCentavos ?: 0 }),
+                Dinheiro.formatar(pagas.sumOf { it.totalPagoCentavos }),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text("${pagas.size} comanda(s) paga(s)", style = MaterialTheme.typography.bodySmall)
             FormaPagamento.entries.forEach { f ->
-                val total = pagas.filter { it.pagamento?.forma == f }.sumOf { it.pagamento?.valorCentavos ?: 0 }
+                val total = pagas.flatMap { it.pagamentos }.filter { it.forma == f }.sumOf { it.valorCentavos }
                 if (total > 0) Text("${f.descricao}: ${Dinheiro.formatar(total)}", style = MaterialTheme.typography.bodyMedium)
             }
             val porGarcom = pagas.groupBy { it.garcomNome.ifBlank { "Sem garçom" } }
-                .mapValues { (_, l) -> l.sumOf { it.pagamento?.valorCentavos ?: 0 } to l.size }
+                .mapValues { (_, l) -> l.sumOf { it.totalPagoCentavos } to l.size }
                 .toList().sortedByDescending { it.second.first }
             if (porGarcom.isNotEmpty()) {
                 Text("Por garçom", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))

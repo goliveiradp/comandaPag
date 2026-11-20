@@ -20,20 +20,26 @@ data class ItemComanda(
 
 enum class StatusComanda { ABERTA, PAGA, CANCELADA }
 
-enum class FormaPagamento(val descricao: String) {
-    CREDITO("Crédito"),
-    DEBITO("Débito"),
-    PIX("PIX"),
+enum class FormaPagamento(val descricao: String, val naMaquininha: Boolean) {
+    CREDITO("Crédito", true),
+    DEBITO("Débito", true),
+    PIX("PIX", true),
+    DINHEIRO("Dinheiro", false),
 }
 
 data class Pagamento(
     val forma: FormaPagamento,
+    /** Quanto deste pagamento abate da comanda. */
     val valorCentavos: Long,
-    val parcelas: Int,
-    val codigoTransacao: String?,
-    val idTransacao: String?,
-    val bandeira: String?,
+    val parcelas: Int = 1,
+    val codigoTransacao: String? = null,
+    val idTransacao: String? = null,
+    val bandeira: String? = null,
     val pagoEm: Long,
+    val recebidoPor: String = "",
+    /** Dinheiro: quanto o cliente entregou e quanto voltou de troco. */
+    val valorRecebidoCentavos: Long? = null,
+    val trocoCentavos: Long = 0,
 )
 
 data class Comanda(
@@ -46,7 +52,8 @@ data class Comanda(
     /** Cobra os 10% de serviço sobre o subtotal. */
     val taxaServico: Boolean = false,
     val fechadaEm: Long? = null,
-    val pagamento: Pagamento? = null,
+    /** Pagamentos recebidos (a conta pode ser dividida e paga em várias formas). */
+    val pagamentos: List<Pagamento> = emptyList(),
     /** Garçom responsável (quem abriu a comanda). */
     val garcomId: Long = 0,
     val garcomNome: String = "",
@@ -60,6 +67,11 @@ data class Comanda(
         get() = if (taxaServico) (subtotalCentavos * PERCENTUAL_SERVICO + 50) / 100 else 0
 
     val totalCentavos: Long get() = subtotalCentavos + taxaServicoCentavos
+
+    val totalPagoCentavos: Long get() = pagamentos.sumOf { it.valorCentavos }
+
+    /** Quanto ainda falta pagar. */
+    val restanteCentavos: Long get() = (totalCentavos - totalPagoCentavos).coerceAtLeast(0)
 
     val quantidadeItens: Int get() = itens.sumOf { it.quantidade }
 
