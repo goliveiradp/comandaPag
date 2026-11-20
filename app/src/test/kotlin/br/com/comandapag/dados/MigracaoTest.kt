@@ -7,6 +7,8 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.core.app.ApplicationProvider
 import br.com.comandapag.core.modelo.FormaPagamento
+import br.com.comandapag.core.modelo.Perfil
+import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.StatusComanda
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -44,7 +46,7 @@ class MigracaoTest {
         }
 
         val banco = Room.databaseBuilder(context, BancoDeDados::class.java, arquivo.absolutePath)
-            .addMigrations(BancoDeDados.MIGRACAO_1_2, BancoDeDados.MIGRACAO_2_3)
+            .addMigrations(BancoDeDados.MIGRACAO_1_2, BancoDeDados.MIGRACAO_2_3, BancoDeDados.MIGRACAO_3_4)
             .allowMainThreadQueries()
             .build()
         try {
@@ -67,6 +69,9 @@ class MigracaoTest {
             assertEquals("VISA", p.bandeira)
             assertEquals(200, p.pagoEm)
             assertEquals(0, paga.restanteCentavos)
+            assertNull(p.caixaId)
+            assertTrue(!p.estornado)
+            assertNull(CaixaRepositoryRoom(banco.caixaDao()).buscarAberto())
         } finally {
             banco.close()
         }
@@ -98,7 +103,39 @@ class MigracaoTest {
         }
     }
 
+    @Test
+    fun migracao3Para4CriaCaixaEDaPermissoesNovas() {
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-3-4.db"
+        helper.createDatabase(nome, 3).use { db ->
+            val usuarios = listOf(
+                "1, 'Dono', '${Perfil.ADMINISTRADOR.permissoes.filter { it !in NOVAS }.joinToString(",") { it.name }}'",
+                "2, 'Bruno', 'COBRAR,REMOVER_ITENS,CANCELAR_COMANDA,ALTERAR_TAXA_SERVICO,VER_RELATORIOS,GERENCIAR_PRODUTOS'",
+                "3, 'Dani', 'COBRAR,VER_RELATORIOS'",
+                "4, 'Ana', 'COBRAR'",
+            )
+            usuarios.forEach {
+                db.execSQL("INSERT INTO usuarios (id, nome, permissoes, ativo, pinHash, pinSalt) VALUES ($it, 1, 'h', 's')")
+            }
+        }
+        helper.runMigrationsAndValidate(nome, 4, true, BancoDeDados.MIGRACAO_3_4).use { db ->
+            val permissoes = mutableMapOf<String, Set<Permissao>>()
+            db.query("SELECT nome, permissoes FROM usuarios").use { c ->
+                while (c.moveToNext()) {
+                    permissoes[c.getString(0)] = UsuarioEntity(0, "", c.getString(1), true, "", "").paraModelo().permissoes
+                }
+            }
+            // Os perfis antigos viram exatamente os perfis novos
+            assertEquals(Perfil.ADMINISTRADOR.permissoes, permissoes["Dono"])
+            assertEquals(Perfil.GERENTE.permissoes, permissoes["Bruno"])
+            assertEquals(Perfil.CAIXA.permissoes, permissoes["Dani"])
+            assertEquals(Perfil.GARCOM.permissoes, permissoes["Ana"])
+        }
+    }
+
     private companion object {
+        val NOVAS = setOf(Permissao.ESTORNAR, Permissao.OPERAR_CAIXA)
+
         val V1 = listOf(
             "CREATE TABLE IF NOT EXISTS `produtos` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `precoCentavos` INTEGER NOT NULL, `categoria` TEXT NOT NULL, `ativo` INTEGER NOT NULL)",
             "CREATE TABLE IF NOT EXISTS `comandas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `identificacao` TEXT NOT NULL, `abertaEm` INTEGER NOT NULL, `status` TEXT NOT NULL, `taxaServico` INTEGER NOT NULL, `fechadaEm` INTEGER, `pagamentoForma` TEXT, `pagamentoValorCentavos` INTEGER, `pagamentoParcelas` INTEGER, `pagamentoCodigoTransacao` TEXT, `pagamentoIdTransacao` TEXT, `pagamentoBandeira` TEXT, `pagamentoEm` INTEGER)",

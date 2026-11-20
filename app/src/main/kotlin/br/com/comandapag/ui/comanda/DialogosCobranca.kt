@@ -54,6 +54,7 @@ private fun textoValor(centavos: Long) = Dinheiro.formatar(centavos).removePrefi
 @Composable
 fun DialogoReceber(
     comanda: Comanda,
+    caixaAberto: Boolean,
     pessoas: Int,
     aoMudarPessoas: (Int) -> Unit,
     simulada: Boolean,
@@ -72,13 +73,20 @@ fun DialogoReceber(
     val valorOk = valor != null && valor in 1..restante
     val recebido = Dinheiro.parse(recebidoTexto)
     val dinheiro = forma == FormaPagamento.DINHEIRO
-    val podeConfirmar = valorOk && (!dinheiro || (recebido != null && recebido > 0))
+    val podeConfirmar = caixaAberto && valorOk && (!dinheiro || (recebido != null && recebido > 0))
 
     AlertDialog(
         onDismissRequest = aoCancelar,
         title = { Text("Receber") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!caixaAberto) {
+                    Text(
+                        "O caixa está fechado. Abra o caixa (aba Caixa) para receber.",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 // Situação da conta
                 if (comanda.totalPagoCentavos > 0) {
                     LinhaValor("Total", comanda.totalCentavos)

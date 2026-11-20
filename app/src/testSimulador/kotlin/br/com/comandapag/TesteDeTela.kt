@@ -63,6 +63,18 @@ abstract class TesteDeTela {
         esperarTexto("Nenhuma comanda aberta")
     }
 
+    /** Abre o caixa pela aba Caixa e volta para Comandas. */
+    fun abrirCaixa(fundo: String = "100,00") {
+        regra.onNodeWithText("Caixa").performClick()
+        esperarTexto("Caixa fechado")
+        clicar("Abrir caixa")
+        campo("Fundo de troco (R$)").performTextInput(fundo)
+        clicar("Confirmar")
+        esperarTexto("Dinheiro esperado na gaveta")
+        regra.onNodeWithText("Comandas").performClick()
+        esperarTexto("Nova comanda")
+    }
+
     fun entrarComo(nome: String, pin: String) {
         esperarTexto("Quem está usando?")
         regra.onNodeWithText(nome).performClick()

@@ -13,6 +13,7 @@ import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.servico.RegraDeNegocioException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,6 +41,9 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
         deps.produtos.observarAtivos().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val cobranca = MutableStateFlow<EstadoCobranca>(EstadoCobranca.Inativa)
+
+    val caixaAberto: StateFlow<Boolean> = deps.caixas.observarAberto().map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     /** Em quantas pessoas a conta ainda vai ser dividida (1 = sem divisão). Diminui a cada pagamento. */
     val pessoasRestantes = MutableStateFlow(1)
@@ -97,6 +101,30 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
                 aposPagar("Dinheiro recebido", "", r.trocoCentavos)
             } catch (e: RegraDeNegocioException) {
                 EstadoCobranca.Recusada(e.message ?: "Não foi possível receber")
+            }
+        }
+    }
+
+    /** Estorna o pagamento na posição [indice]. Cartão/PIX passam pela maquininha. */
+    fun estornar(indice: Int, operador: Usuario) {
+        if (cobranca.value is EstadoCobranca.EmAndamento) return
+        cobranca.value = EstadoCobranca.EmAndamento("Estornando...")
+        viewModelScope.launch {
+            cobranca.value = try {
+                when (val r = service.estornar(comandaId, indice, operador) { status ->
+                    if (cobranca.value is EstadoCobranca.EmAndamento) cobranca.value = EstadoCobranca.EmAndamento(status)
+                }) {
+                    is ResultadoPagamento.Aprovado -> {
+                        aviso.value = r.mensagem ?: "Estorno realizado"
+                        EstadoCobranca.Inativa
+                    }
+                    is ResultadoPagamento.Recusado -> EstadoCobranca.Recusada(
+                        "Estorno não realizado: " + r.mensagem +
+                            (r.codigoErro?.takeIf { it.isNotBlank() }?.let { " (código $it)" } ?: ""),
+                    )
+                }
+            } catch (e: RegraDeNegocioException) {
+                EstadoCobranca.Recusada(e.message ?: "Não foi possível estornar")
             }
         }
     }

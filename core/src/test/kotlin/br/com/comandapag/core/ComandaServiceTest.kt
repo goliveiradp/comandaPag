@@ -7,12 +7,14 @@ import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoPagamento
+import br.com.comandapag.core.servico.CaixaService
 import br.com.comandapag.core.servico.ComandaService
 import br.com.comandapag.core.servico.RegraDeNegocioException
 import br.com.comandapag.core.servico.SemPermissaoException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -23,11 +25,18 @@ import kotlin.test.assertTrue
 class ComandaServiceTest {
     private val repo = ComandaRepositoryEmMemoria()
     private val terminal = TerminalFalso()
-    private val service = ComandaService(repo, terminal, agora = { 1_000L })
+    private val caixas = CaixaRepositoryEmMemoria()
+    private val service = ComandaService(repo, terminal, caixas, agora = { 1_000L })
+    private val caixaService = CaixaService(caixas, repo, agora = { 1_000L })
 
     private val garcom = Usuario(id = 10, nome = "Ana", permissoes = Perfil.GARCOM.permissoes)
     private val gerente = Usuario(id = 20, nome = "Bruno", permissoes = Perfil.GERENTE.permissoes)
     private val semCobrar = Usuario(id = 30, nome = "Caio", permissoes = emptySet())
+
+    private val operadorCaixa = Usuario(id = 40, nome = "Dani", permissoes = Perfil.CAIXA.permissoes)
+
+    @BeforeTest
+    fun abrirCaixa() = runTest { caixaService.abrir(10_000, operadorCaixa) }
 
     private val cerveja = Produto(id = 1, nome = "Cerveja", precoCentavos = 1200)
     private val porcao = Produto(id = 2, nome = "Porção de fritas", precoCentavos = 3550)

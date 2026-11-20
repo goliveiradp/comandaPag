@@ -14,14 +14,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ItemComandaEntity::class,
         UsuarioEntity::class,
         PagamentoEntity::class,
+        CaixaEntity::class,
+        MovimentoCaixaEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class BancoDeDados : RoomDatabase() {
     abstract fun produtoDao(): ProdutoDao
     abstract fun comandaDao(): ComandaDao
     abstract fun usuarioDao(): UsuarioDao
+    abstract fun caixaDao(): CaixaDao
 
     companion object {
         const val NOME = "comandapag.db"
@@ -73,9 +76,46 @@ abstract class BancoDeDados : RoomDatabase() {
             }
         }
 
+        /**
+         * v4: caixa (abertura, sangria, suprimento, fechamento) e estorno de pagamentos.
+         * Usuários existentes ganham as permissões novas conforme o que já podiam fazer:
+         * quem cancelava comandas (gerente) passa a estornar; quem via relatórios (caixa,
+         * gerente) passa a operar o caixa; administradores ganham as duas.
+         */
+        val MIGRACAO_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `pagamentos` ADD COLUMN `caixaId` INTEGER")
+                db.execSQL("ALTER TABLE `pagamentos` ADD COLUMN `estornadoEm` INTEGER")
+                db.execSQL("ALTER TABLE `pagamentos` ADD COLUMN `estornadoPor` TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `caixas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`abertoEm` INTEGER NOT NULL, `abertoPor` TEXT NOT NULL, `valorInicialCentavos` INTEGER NOT NULL, " +
+                        "`fechadoEm` INTEGER, `fechadoPor` TEXT, `valorContadoCentavos` INTEGER)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `movimentos_caixa` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`caixaId` INTEGER NOT NULL, `posicao` INTEGER NOT NULL, `tipo` TEXT NOT NULL, " +
+                        "`valorCentavos` INTEGER NOT NULL, `motivo` TEXT NOT NULL, `em` INTEGER NOT NULL, " +
+                        "`por` TEXT NOT NULL, `forma` TEXT, " +
+                        "FOREIGN KEY(`caixaId`) REFERENCES `caixas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_movimentos_caixa_caixaId` ON `movimentos_caixa` (`caixaId`)")
+
+                fun tem(permissao: String) = "(',' || `permissoes` || ',') LIKE '%,$permissao,%'"
+                db.execSQL(
+                    "UPDATE `usuarios` SET `permissoes` = `permissoes` || ',ESTORNAR' " +
+                        "WHERE ${tem("CANCELAR_COMANDA")} OR ${tem("GERENCIAR_USUARIOS")}",
+                )
+                db.execSQL(
+                    "UPDATE `usuarios` SET `permissoes` = `permissoes` || ',OPERAR_CAIXA' " +
+                        "WHERE ${tem("VER_RELATORIOS")} OR ${tem("GERENCIAR_USUARIOS")}",
+                )
+            }
+        }
+
         fun criar(context: Context): BancoDeDados =
             Room.databaseBuilder(context, BancoDeDados::class.java, NOME)
-                .addMigrations(MIGRACAO_1_2, MIGRACAO_2_3)
+                .addMigrations(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4)
                 .build()
     }
 }

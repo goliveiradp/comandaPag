@@ -1,6 +1,8 @@
 package br.com.comandapag.core.repositorio
 
+import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.Usuario
 import kotlinx.coroutines.flow.Flow
@@ -21,6 +23,18 @@ interface ComandaRepository {
     suspend fun buscarAbertaPorIdentificacao(identificacao: String): Comanda?
     /** Insere (id = 0) ou atualiza a comanda e seus itens. Retorna o id. */
     suspend fun salvar(comanda: Comanda): Long
+
+    /** Todos os pagamentos (inclusive estornados) recebidos no caixa [caixaId]. */
+    suspend fun pagamentosDoCaixa(caixaId: Long): List<Pagamento>
+}
+
+interface CaixaRepository {
+    fun observarAberto(): Flow<Caixa?>
+    fun observarFechados(): Flow<List<Caixa>>
+    suspend fun buscarAberto(): Caixa?
+    suspend fun buscar(id: Long): Caixa?
+    /** Insere (id = 0) ou atualiza o caixa e seus movimentos. Retorna o id. */
+    suspend fun salvar(caixa: Caixa): Long
 }
 
 interface UsuarioRepository {

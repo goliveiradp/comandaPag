@@ -22,6 +22,7 @@ class DivisaoContaTest : TesteDeTela() {
     @Test
     fun divideEmDuasPessoasComDinheiroECartao() {
         criarAdministrador()
+        abrirCaixa()
         regra.onNodeWithText("Produtos").performClick()
         cadastrarProduto("Porção de fritas", "35,90", "Petiscos")
         regra.onNodeWithText("Comandas").performClick()
@@ -70,6 +71,7 @@ class DivisaoContaTest : TesteDeTela() {
     @Test
     fun pagamentoParcialDeixaComandaAberta() {
         criarAdministrador()
+        abrirCaixa()
         regra.onNodeWithText("Produtos").performClick()
         cadastrarProduto("Cerveja 600ml", "12,00", "Bebidas")
         regra.onNodeWithText("Comandas").performClick()

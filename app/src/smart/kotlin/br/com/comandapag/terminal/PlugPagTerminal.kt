@@ -5,6 +5,7 @@ import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.pagamento.Impressora
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
+import br.com.comandapag.core.pagamento.SolicitacaoEstorno
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
 import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPag
@@ -13,6 +14,7 @@ import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPagEventData
 import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPagEventListener
 import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPagPaymentData
 import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPagPrinterData
+import br.com.uol.pagseguro.plugpagservice.wrapper.PlugPagVoidData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -72,6 +74,33 @@ class PlugPagTerminal(private val context: Context) : TerminalPagamento, Impress
                     mensagem = r.message?.takeIf { it.isNotBlank() } ?: "Transação não autorizada",
                     codigoErro = r.errorCode,
                 )
+            }
+        }.getOrElse { ResultadoPagamento.Recusado(it.message ?: "Erro de comunicação com a maquininha") }
+    }
+
+    override suspend fun estornar(
+        solicitacao: SolicitacaoEstorno,
+        aoMudarStatus: (String) -> Unit,
+    ): ResultadoPagamento = withContext(Dispatchers.IO) {
+        runCatching {
+            plugPag.setEventListener(object : PlugPagEventListener {
+                override fun onEvent(data: PlugPagEventData) {
+                    data.customMessage.takeIf { it.isNotBlank() }?.let(aoMudarStatus)
+                }
+            })
+            val r = plugPag.voidPayment(
+                PlugPagVoidData(
+                    transactionCode = solicitacao.codigoTransacao,
+                    transactionId = solicitacao.idTransacao,
+                    printReceipt = true,
+                    // PIX é estornado como QR Code
+                    voidType = if (solicitacao.forma == FormaPagamento.PIX) PlugPag.VOID_QRCODE else PlugPag.VOID_PAYMENT,
+                ),
+            )
+            if (r.result == PlugPag.RET_OK) {
+                ResultadoPagamento.Aprovado(r.transactionCode, r.transactionId, r.cardBrand, r.message)
+            } else {
+                ResultadoPagamento.Recusado(r.message?.takeIf { it.isNotBlank() } ?: "Estorno não autorizado", r.errorCode)
             }
         }.getOrElse { ResultadoPagamento.Recusado(it.message ?: "Erro de comunicação com a maquininha") }
     }

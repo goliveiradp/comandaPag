@@ -1,9 +1,11 @@
 package br.com.comandapag
 
 import android.app.Application
+import br.com.comandapag.core.servico.CaixaService
 import br.com.comandapag.core.servico.ComandaService
 import br.com.comandapag.core.servico.UsuarioService
 import br.com.comandapag.dados.BancoDeDados
+import br.com.comandapag.dados.CaixaRepositoryRoom
 import br.com.comandapag.dados.ComandaRepositoryRoom
 import br.com.comandapag.dados.Preferencias
 import br.com.comandapag.dados.ProdutoRepositoryRoom
@@ -13,6 +15,7 @@ import br.com.comandapag.terminal.criarMaquininha
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.sync.Mutex
 
 class ComandaPagApp : Application() {
     lateinit var dependencias: Dependencias
@@ -32,7 +35,12 @@ class Dependencias(app: Application) {
     val usuarios = UsuarioRepositoryRoom(banco.usuarioDao())
     val preferencias = Preferencias(app)
     val maquininha: Maquininha = criarMaquininha(app)
-    val comandaService = ComandaService(comandas, maquininha.terminal)
+    val caixas = CaixaRepositoryRoom(banco.caixaDao())
+
+    /** Mesma trava para comandas e caixa: estornos mexem nos dois. */
+    private val trava = Mutex()
+    val comandaService = ComandaService(comandas, maquininha.terminal, caixas, trava)
+    val caixaService = CaixaService(caixas, comandas, trava)
     val usuarioService = UsuarioService(usuarios)
     val sessao = Sessao(usuarios, CoroutineScope(SupervisorJob() + Dispatchers.Main))
 }

@@ -40,7 +40,14 @@ data class Pagamento(
     /** Dinheiro: quanto o cliente entregou e quanto voltou de troco. */
     val valorRecebidoCentavos: Long? = null,
     val trocoCentavos: Long = 0,
-)
+    /** Caixa em que o pagamento entrou. */
+    val caixaId: Long? = null,
+    /** Preenchidos quando o pagamento é estornado. Pagamento estornado não conta como pago. */
+    val estornadoEm: Long? = null,
+    val estornadoPor: String? = null,
+) {
+    val estornado: Boolean get() = estornadoEm != null
+}
 
 data class Comanda(
     val id: Long = 0,
@@ -68,7 +75,8 @@ data class Comanda(
 
     val totalCentavos: Long get() = subtotalCentavos + taxaServicoCentavos
 
-    val totalPagoCentavos: Long get() = pagamentos.sumOf { it.valorCentavos }
+    /** Soma dos pagamentos válidos (estornados não contam). */
+    val totalPagoCentavos: Long get() = pagamentos.filter { !it.estornado }.sumOf { it.valorCentavos }
 
     /** Quanto ainda falta pagar. */
     val restanteCentavos: Long get() = (totalCentavos - totalPagoCentavos).coerceAtLeast(0)

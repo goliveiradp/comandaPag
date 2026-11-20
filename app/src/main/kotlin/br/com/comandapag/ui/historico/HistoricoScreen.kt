@@ -63,7 +63,7 @@ fun HistoricoScreen(modifier: Modifier = Modifier, aoAbrirComanda: (Long) -> Uni
                     Column {
                         Text(
                             (c.fechadaEm?.let(ExtratoComanda::dataPadrao) ?: "") + " · " +
-                                if (cancelada) "Cancelada" else c.pagamentos.map { it.forma.descricao }.distinct().joinToString(" + "),
+                                if (cancelada) "Cancelada" else c.pagamentos.filter { !it.estornado }.map { it.forma.descricao }.distinct().joinToString(" + "),
                         )
                         if (c.garcomNome.isNotBlank()) Text("Garçom: ${c.garcomNome}")
                     }
@@ -94,7 +94,7 @@ private fun ResumoDoDia(pagas: List<Comanda>) {
             )
             Text("${pagas.size} comanda(s) paga(s)", style = MaterialTheme.typography.bodySmall)
             FormaPagamento.entries.forEach { f ->
-                val total = pagas.flatMap { it.pagamentos }.filter { it.forma == f }.sumOf { it.valorCentavos }
+                val total = pagas.flatMap { it.pagamentos }.filter { it.forma == f && !it.estornado }.sumOf { it.valorCentavos }
                 if (total > 0) Text("${f.descricao}: ${Dinheiro.formatar(total)}", style = MaterialTheme.typography.bodyMedium)
             }
             val porGarcom = pagas.groupBy { it.garcomNome.ifBlank { "Sem garçom" } }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.ui.acesso.LoginScreen
+import br.com.comandapag.ui.caixa.CaixaScreen
 import br.com.comandapag.ui.comanda.ComandaScreen
 import br.com.comandapag.ui.comandas.ComandasScreen
 import br.com.comandapag.ui.configuracoes.ConfiguracoesScreen
@@ -53,6 +55,7 @@ sealed interface Tela {
     data object Comandas : Tela
     data object Produtos : Tela
     data object Historico : Tela
+    data object Caixa : Tela
     data object Configuracoes : Tela
     data object Usuarios : Tela
     data class Comanda(val id: Long) : Tela
@@ -64,6 +67,7 @@ private val abas = listOf(
     Aba(Tela.Comandas, "Comandas", Icons.AutoMirrored.Filled.ReceiptLong, null),
     Aba(Tela.Produtos, "Produtos", Icons.Filled.Inventory2, Permissao.GERENCIAR_PRODUTOS),
     Aba(Tela.Historico, "Histórico", Icons.Filled.History, Permissao.VER_RELATORIOS),
+    Aba(Tela.Caixa, "Caixa", Icons.Filled.PointOfSale, Permissao.OPERAR_CAIXA),
     Aba(Tela.Configuracoes, "Ajustes", Icons.Filled.Settings, null),
 )
 
@@ -118,7 +122,8 @@ private fun Principal(usuario: Usuario, aoSair: () -> Unit) {
                             selected = atual == aba.tela,
                             onClick = { pilha.clear(); pilha.add(Tela.Comandas); if (aba.tela != Tela.Comandas) pilha.add(aba.tela) },
                             icon = { Icon(aba.icone, contentDescription = null) },
-                            label = { Text(aba.titulo) },
+                            // Com até 5 abas, o rótulo precisa caber numa linha em telas estreitas
+                            label = { Text(aba.titulo, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
                         )
                     }
                 }
@@ -129,6 +134,7 @@ private fun Principal(usuario: Usuario, aoSair: () -> Unit) {
                 Tela.Comandas -> ComandasScreen(mod, usuario, aoAbrirComanda = { abrir(Tela.Comanda(it)) })
                 Tela.Produtos -> ProdutosScreen(mod)
                 Tela.Historico -> HistoricoScreen(mod, aoAbrirComanda = { abrir(Tela.Comanda(it)) })
+                Tela.Caixa -> CaixaScreen(mod, usuario)
                 Tela.Configuracoes -> ConfiguracoesScreen(mod, usuario, aoGerenciarUsuarios = { abrir(Tela.Usuarios) })
                 is Tela.Comanda, Tela.Usuarios -> Unit
             }

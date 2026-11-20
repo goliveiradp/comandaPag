@@ -10,6 +10,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Divisão da conta, dinheiro e troco](docs/divisao.png)
 
+![Caixa e estorno](docs/caixa.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -26,6 +28,13 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   centavos para fechar exato. A comanda só fecha quando não falta nada; a tela
   mostra "Pago" e "Falta". Depois de receber parte, não é possível remover itens
   abaixo do valor já pago nem cancelar a comanda.
+- **Estorno**: toque num pagamento da comanda para estorná-lo. Cartão e PIX são
+  estornados na maquininha; dinheiro é devolvido do caixa. Se a comanda já estava
+  paga, ela volta a ficar aberta. O pagamento estornado fica riscado (auditoria).
+- **Caixa**: abertura com fundo de troco (só é possível receber com o caixa aberto),
+  sangria e suprimento com motivo, e fechamento: você informa o dinheiro contado
+  na gaveta e o app mostra sobra ou falta. Relatório de fechamento impresso com
+  vendas por forma, estornos, sangrias e suprimentos.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou
@@ -42,6 +51,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   | Cancelar comanda                  |        |       | ✔       | ✔             |
   | Ligar/desligar 10% de serviço     |        |       | ✔       | ✔             |
   | Ver histórico e vendas            |        | ✔     | ✔       | ✔             |
+  | Estornar pagamentos               |        |       | ✔       | ✔             |
+  | Abrir/fechar caixa, sangria       |        | ✔     | ✔       | ✔             |
   | Cadastrar produtos                |        |       | ✔       | ✔             |
   | Cadastrar usuários e permissões   |        |       |         | ✔             |
   | Ajustes e ativação da maquininha  |        |       |         | ✔             |

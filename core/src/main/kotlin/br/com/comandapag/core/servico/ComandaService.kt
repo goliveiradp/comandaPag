@@ -1,17 +1,22 @@
 package br.com.comandapag.core.servico
 
+import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
+import br.com.comandapag.core.modelo.MovimentoCaixa
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoPagamento
+import br.com.comandapag.core.pagamento.SolicitacaoEstorno
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
+import br.com.comandapag.core.repositorio.CaixaRepository
 import br.com.comandapag.core.repositorio.ComandaRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,13 +35,15 @@ class SemPermissaoException(val permissao: Permissao) :
 class ComandaService(
     private val comandas: ComandaRepository,
     private val terminal: TerminalPagamento,
-    private val agora: () -> Long = System::currentTimeMillis,
-) {
+    private val caixas: CaixaRepository,
     /**
      * Toda alteração lê a comanda, modifica e grava. Sem essa trava, dois toques
      * rápidos em "adicionar" leriam a mesma versão e um item se perderia.
+     * É compartilhada com o [CaixaService], porque estornos também mexem no caixa.
      */
-    private val trava = Mutex()
+    private val trava: Mutex = Mutex(),
+    private val agora: () -> Long = System::currentTimeMillis,
+) {
 
     /** Abre uma comanda tendo [responsavel] como garçom responsável. */
     suspend fun abrir(identificacao: String, responsavel: Usuario, taxaServico: Boolean = false): Comanda = trava.withLock {
@@ -111,7 +118,7 @@ class ComandaService(
     suspend fun cancelar(comandaId: Long, operador: Usuario): Comanda = trava.withLock {
         exigir(operador, Permissao.CANCELAR_COMANDA)
         val comanda = comandaAberta(comandaId)
-        if (comanda.pagamentos.isNotEmpty()) {
+        if (comanda.pagamentos.any { !it.estornado }) {
             erro("A comanda já tem pagamentos. Estorne-os antes de cancelar.")
         }
         salvar(
@@ -139,6 +146,7 @@ class ComandaService(
         exigir(operador, Permissao.COBRAR)
         if (!forma.naMaquininha) erro("Use o recebimento em dinheiro para essa forma de pagamento.")
         val comanda = comandaAberta(comandaId)
+        val caixa = caixaAberto()
         val restante = comanda.restanteCentavos
         if (comanda.totalCentavos <= 0) erro("A comanda está vazia.")
         val valor = valorCentavos ?: restante
@@ -170,6 +178,7 @@ class ComandaService(
                     bandeira = resultado.bandeira,
                     pagoEm = agora(),
                     recebidoPor = operador.nome,
+                    caixaId = caixa.id,
                 ),
                 operador,
             )
@@ -190,6 +199,7 @@ class ComandaService(
     ): RecebimentoDinheiro = trava.withLock {
         exigir(operador, Permissao.COBRAR)
         val comanda = comandaAberta(comandaId)
+        val caixa = caixaAberto()
         val restante = comanda.restanteCentavos
         if (comanda.totalCentavos <= 0) erro("A comanda está vazia.")
         val parte = valorCentavos ?: restante
@@ -208,11 +218,75 @@ class ComandaService(
                 recebidoPor = operador.nome,
                 valorRecebidoCentavos = recebidoCentavos,
                 trocoCentavos = troco,
+                caixaId = caixa.id,
             ),
             operador,
         )
         RecebimentoDinheiro(trocoCentavos = troco, comanda = atualizada)
     }
+
+    /**
+     * Estorna o pagamento na posição [indicePagamento]. Cartão e PIX são estornados na
+     * maquininha; dinheiro é devolvido do caixa. Se a comanda estava paga, ela volta a
+     * ficar aberta com o valor estornado em aberto.
+     */
+    suspend fun estornar(
+        comandaId: Long,
+        indicePagamento: Int,
+        operador: Usuario,
+        aoMudarStatus: (String) -> Unit = {},
+    ): ResultadoPagamento = trava.withLock {
+        exigir(operador, Permissao.ESTORNAR)
+        val comanda = comandas.buscar(comandaId) ?: erro("Comanda não encontrada.")
+        if (comanda.status == StatusComanda.CANCELADA) erro("A comanda foi cancelada.")
+        val pagamento = comanda.pagamentos.getOrNull(indicePagamento) ?: erro("Pagamento não encontrado.")
+        if (pagamento.estornado) erro("Esse pagamento já foi estornado.")
+        val caixa = caixas.buscarAberto() ?: erro("Abra o caixa para fazer estornos.")
+
+        if (pagamento.forma.naMaquininha) {
+            val codigo = pagamento.codigoTransacao
+            val idTransacao = pagamento.idTransacao
+            if (codigo.isNullOrBlank() || idTransacao.isNullOrBlank()) {
+                erro("Pagamento sem código da transação; faça o estorno pelo app da PagBank.")
+            }
+            val r = terminal.estornar(
+                SolicitacaoEstorno(pagamento.forma, pagamento.valorCentavos, codigo, idTransacao),
+                aoMudarStatus,
+            )
+            if (r is ResultadoPagamento.Recusado) return@withLock r
+        }
+
+        val momento = agora()
+        val pagamentos = comanda.pagamentos.toMutableList().also {
+            it[indicePagamento] = pagamento.copy(estornadoEm = momento, estornadoPor = operador.nome)
+        }
+        var atualizada = comanda.copy(pagamentos = pagamentos)
+        if (atualizada.status == StatusComanda.PAGA && atualizada.restanteCentavos > 0) {
+            atualizada = atualizada.copy(status = StatusComanda.ABERTA, fechadaEm = null, fechadaPor = null)
+        }
+        salvar(atualizada)
+        caixas.salvar(
+            caixa.copy(
+                movimentos = caixa.movimentos + MovimentoCaixa(
+                    tipo = TipoMovimento.ESTORNO,
+                    valorCentavos = pagamento.valorCentavos,
+                    motivo = "Comanda ${comanda.identificacao}",
+                    em = momento,
+                    por = operador.nome,
+                    forma = pagamento.forma,
+                ),
+            ),
+        )
+        ResultadoPagamento.Aprovado(
+            codigoTransacao = pagamento.codigoTransacao,
+            idTransacao = pagamento.idTransacao,
+            bandeira = pagamento.bandeira,
+            mensagem = "Estorno de ${Dinheiro.formatar(pagamento.valorCentavos)} realizado",
+        )
+    }
+
+    private suspend fun caixaAberto(): Caixa =
+        caixas.buscarAberto() ?: erro("O caixa está fechado. Abra o caixa para receber.")
 
     /** Acrescenta o pagamento e fecha a comanda se ela ficou quitada. */
     private suspend fun registrar(comanda: Comanda, pagamento: Pagamento, operador: Usuario): Comanda {

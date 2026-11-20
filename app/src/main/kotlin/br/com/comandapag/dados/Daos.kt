@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import kotlinx.coroutines.flow.Flow
 
@@ -64,6 +65,9 @@ abstract class ComandaDao {
     @Query("DELETE FROM pagamentos WHERE comandaId = :comandaId")
     protected abstract suspend fun apagarPagamentos(comandaId: Long)
 
+    @Query("SELECT * FROM pagamentos WHERE caixaId = :caixaId ORDER BY pagoEm")
+    abstract suspend fun pagamentosDoCaixa(caixaId: Long): List<PagamentoEntity>
+
     /** Salva a comanda e substitui todos os seus itens e pagamentos numa única transação. */
     @Transaction
     open suspend fun salvar(comanda: Comanda): Long {
@@ -102,4 +106,57 @@ interface UsuarioDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun salvar(usuario: UsuarioEntity): Long
+}
+
+@Dao
+abstract class CaixaDao {
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NULL LIMIT 1")
+    abstract fun observarAberto(): Flow<CaixaComMovimentos?>
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NOT NULL ORDER BY fechadoEm DESC LIMIT 60")
+    abstract fun observarFechados(): Flow<List<CaixaComMovimentos>>
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NULL LIMIT 1")
+    abstract suspend fun buscarAberto(): CaixaComMovimentos?
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE id = :id")
+    abstract suspend fun buscar(id: Long): CaixaComMovimentos?
+
+    @Insert
+    protected abstract suspend fun inserir(caixa: CaixaEntity): Long
+
+    @Update
+    protected abstract suspend fun atualizar(caixa: CaixaEntity)
+
+    @Insert
+    protected abstract suspend fun inserirMovimentos(movimentos: List<MovimentoCaixaEntity>)
+
+    @Query("DELETE FROM movimentos_caixa WHERE caixaId = :caixaId")
+    protected abstract suspend fun apagarMovimentos(caixaId: Long)
+
+    @Transaction
+    open suspend fun salvar(caixa: Caixa): Long {
+        val entidade = caixa.paraEntidade()
+        val id = if (caixa.id == 0L) inserir(entidade) else entidade.id.also { atualizar(entidade) }
+        apagarMovimentos(id)
+        inserirMovimentos(
+            caixa.movimentos.mapIndexed { i, m ->
+                MovimentoCaixaEntity(
+                    caixaId = id,
+                    posicao = i,
+                    tipo = m.tipo.name,
+                    valorCentavos = m.valorCentavos,
+                    motivo = m.motivo,
+                    em = m.em,
+                    por = m.por,
+                    forma = m.forma?.name,
+                )
+            },
+        )
+        return id
+    }
 }

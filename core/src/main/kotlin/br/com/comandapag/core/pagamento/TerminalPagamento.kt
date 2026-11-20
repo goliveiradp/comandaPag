@@ -10,6 +10,13 @@ data class SolicitacaoPagamento(
     val referencia: String,
 )
 
+data class SolicitacaoEstorno(
+    val forma: FormaPagamento,
+    val valorCentavos: Long,
+    val codigoTransacao: String,
+    val idTransacao: String,
+)
+
 sealed interface ResultadoPagamento {
     data class Aprovado(
         val codigoTransacao: String?,
@@ -41,6 +48,12 @@ interface TerminalPagamento {
      */
     suspend fun cobrar(
         solicitacao: SolicitacaoPagamento,
+        aoMudarStatus: (String) -> Unit = {},
+    ): ResultadoPagamento
+
+    /** Estorna (cancela) uma transação aprovada anteriormente. */
+    suspend fun estornar(
+        solicitacao: SolicitacaoEstorno,
         aoMudarStatus: (String) -> Unit = {},
     ): ResultadoPagamento
 

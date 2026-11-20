@@ -1,5 +1,6 @@
 package br.com.comandapag.ui.comanda
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import br.com.comandapag.core.impressao.ExtratoComanda
@@ -67,6 +69,8 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val cobranca by vm.cobranca.collectAsStateWithLifecycle()
     val aviso by vm.aviso.collectAsStateWithLifecycle()
     val pessoas by vm.pessoasRestantes.collectAsStateWithLifecycle()
+    val caixaAberto by vm.caixaAberto.collectAsStateWithLifecycle()
+    var estornando by remember { mutableStateOf<Int?>(null) }
     val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
     val autorizador = rememberAutorizador()
     // Quem vai cobrar (o próprio usuário ou quem autorizou)
@@ -145,6 +149,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                             autorizador.exigir(Permissao.ALTERAR_TAXA_SERVICO) { vm.definirTaxaServico(ativa, it) }
                         },
                         aoAdicionar = { mostrarProdutos = true },
+                        aoEstornar = { estornando = it },
                         aoCobrar = { autorizador.exigir(Permissao.COBRAR) { cobrador = it } },
                     )
                 }
@@ -183,6 +188,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     if (quemCobra != null && c != null) {
         DialogoReceber(
             comanda = c,
+            caixaAberto = caixaAberto,
             pessoas = pessoas,
             aoMudarPessoas = { vm.pessoasRestantes.value = it },
             simulada = vm.maquininhaSimulada,
@@ -212,6 +218,32 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
             if (quitada) aoVoltar()
         },
     )
+
+    val indiceEstorno = estornando
+    val pagamentoEstorno = indiceEstorno?.let { c?.pagamentos?.getOrNull(it) }
+    if (indiceEstorno != null && pagamentoEstorno != null) {
+        AlertDialog(
+            onDismissRequest = { estornando = null },
+            title = { Text("Estornar pagamento?") },
+            text = {
+                Text(
+                    "${pagamentoEstorno.forma.descricao} de ${Dinheiro.formatar(pagamentoEstorno.valorCentavos)}. " +
+                        if (pagamentoEstorno.forma.naMaquininha) {
+                            "O estorno será feito na maquininha."
+                        } else {
+                            "Devolva o dinheiro ao cliente; o valor sai do caixa."
+                        },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    estornando = null
+                    autorizador.exigir(Permissao.ESTORNAR) { vm.estornar(indiceEstorno, it) }
+                }) { Text("Estornar") }
+            },
+            dismissButton = { TextButton(onClick = { estornando = null }) { Text("Voltar") } },
+        )
+    }
 
     if (confirmarCancelamento) {
         AlertDialog(
@@ -265,6 +297,7 @@ private fun Resumo(
     comanda: Comanda,
     aoAlterarTaxa: (Boolean) -> Unit,
     aoAdicionar: () -> Unit,
+    aoEstornar: (Int) -> Unit,
     aoCobrar: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
@@ -286,22 +319,35 @@ private fun Resumo(
                     fontWeight = FontWeight.Bold,
                 )
             }
-            comanda.pagamentos.forEach { p ->
+            val podeEstornar = comanda.status != StatusComanda.CANCELADA
+            comanda.pagamentos.forEachIndexed { i, p ->
                 val parcelas = if (p.parcelas > 1) " ${p.parcelas}x" else ""
                 val troco = if (p.trocoCentavos > 0) " (troco ${Dinheiro.formatar(p.trocoCentavos)})" else ""
-                Row(Modifier.padding(top = 2.dp)) {
+                val situacao = if (p.estornado) " · ESTORNADO" else ""
+                val estilo = MaterialTheme.typography.bodySmall.copy(
+                    textDecoration = if (p.estornado) TextDecoration.LineThrough else null,
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (podeEstornar && !p.estornado) Modifier.clickable { aoEstornar(i) } else Modifier)
+                        .padding(top = 2.dp),
+                ) {
                     Text(
-                        "${p.forma.descricao}$parcelas · ${ExtratoComanda.dataPadrao(p.pagoEm)}$troco",
+                        "${p.forma.descricao}$parcelas · ${ExtratoComanda.dataPadrao(p.pagoEm)}$troco$situacao",
                         Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = estilo,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        Dinheiro.formatar(p.valorCentavos),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text(Dinheiro.formatar(p.valorCentavos), style = estilo, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+            if (podeEstornar && comanda.pagamentos.any { !it.estornado }) {
+                Text(
+                    "Toque num pagamento para estornar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
             }
             if (comanda.estaAberta && comanda.totalPagoCentavos > 0) {
                 Row {

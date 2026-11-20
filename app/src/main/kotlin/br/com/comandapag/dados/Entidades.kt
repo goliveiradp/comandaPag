@@ -7,13 +7,16 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
+import br.com.comandapag.core.modelo.MovimentoCaixa
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
 
 @Entity(tableName = "produtos")
@@ -104,6 +107,10 @@ data class PagamentoEntity(
     val recebidoPor: String,
     val valorRecebidoCentavos: Long?,
     val trocoCentavos: Long,
+    // Versão 4 do banco
+    val caixaId: Long? = null,
+    val estornadoEm: Long? = null,
+    val estornadoPor: String? = null,
 ) {
     fun paraModelo() = Pagamento(
         forma = FormaPagamento.valueOf(forma),
@@ -116,6 +123,9 @@ data class PagamentoEntity(
         recebidoPor = recebidoPor,
         valorRecebidoCentavos = valorRecebidoCentavos,
         trocoCentavos = trocoCentavos,
+        caixaId = caixaId,
+        estornadoEm = estornadoEm,
+        estornadoPor = estornadoPor,
     )
 
     companion object {
@@ -132,9 +142,83 @@ data class PagamentoEntity(
             recebidoPor = p.recebidoPor,
             valorRecebidoCentavos = p.valorRecebidoCentavos,
             trocoCentavos = p.trocoCentavos,
+            caixaId = p.caixaId,
+            estornadoEm = p.estornadoEm,
+            estornadoPor = p.estornadoPor,
         )
     }
 }
+
+@Entity(tableName = "caixas")
+data class CaixaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val abertoEm: Long,
+    val abertoPor: String,
+    val valorInicialCentavos: Long,
+    val fechadoEm: Long?,
+    val fechadoPor: String?,
+    val valorContadoCentavos: Long?,
+)
+
+@Entity(
+    tableName = "movimentos_caixa",
+    foreignKeys = [
+        ForeignKey(
+            entity = CaixaEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["caixaId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("caixaId")],
+)
+data class MovimentoCaixaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val caixaId: Long,
+    val posicao: Int,
+    val tipo: String,
+    val valorCentavos: Long,
+    val motivo: String,
+    val em: Long,
+    val por: String,
+    val forma: String?,
+)
+
+data class CaixaComMovimentos(
+    @Embedded val caixa: CaixaEntity,
+    @Relation(parentColumn = "id", entityColumn = "caixaId")
+    val movimentos: List<MovimentoCaixaEntity>,
+) {
+    fun paraModelo() = Caixa(
+        id = caixa.id,
+        abertoEm = caixa.abertoEm,
+        abertoPor = caixa.abertoPor,
+        valorInicialCentavos = caixa.valorInicialCentavos,
+        movimentos = movimentos.sortedBy { it.posicao }.map {
+            MovimentoCaixa(
+                tipo = TipoMovimento.valueOf(it.tipo),
+                valorCentavos = it.valorCentavos,
+                motivo = it.motivo,
+                em = it.em,
+                por = it.por,
+                forma = it.forma?.let(FormaPagamento::valueOf),
+            )
+        },
+        fechadoEm = caixa.fechadoEm,
+        fechadoPor = caixa.fechadoPor,
+        valorContadoCentavos = caixa.valorContadoCentavos,
+    )
+}
+
+fun Caixa.paraEntidade() = CaixaEntity(
+    id = id,
+    abertoEm = abertoEm,
+    abertoPor = abertoPor,
+    valorInicialCentavos = valorInicialCentavos,
+    fechadoEm = fechadoEm,
+    fechadoPor = fechadoPor,
+    valorContadoCentavos = valorContadoCentavos,
+)
 
 data class ComandaComItens(
     @Embedded val comanda: ComandaEntity,

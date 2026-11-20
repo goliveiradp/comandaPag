@@ -1,8 +1,11 @@
 package br.com.comandapag.dados
 
+import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.Usuario
+import br.com.comandapag.core.repositorio.CaixaRepository
 import br.com.comandapag.core.repositorio.ComandaRepository
 import br.com.comandapag.core.repositorio.ProdutoRepository
 import br.com.comandapag.core.repositorio.UsuarioRepository
@@ -24,6 +27,16 @@ class ComandaRepositoryRoom(private val dao: ComandaDao) : ComandaRepository {
     override suspend fun buscarAbertaPorIdentificacao(identificacao: String): Comanda? =
         dao.buscarAbertaPorIdentificacao(identificacao)?.paraModelo()
     override suspend fun salvar(comanda: Comanda): Long = dao.salvar(comanda)
+    override suspend fun pagamentosDoCaixa(caixaId: Long): List<Pagamento> =
+        dao.pagamentosDoCaixa(caixaId).map { it.paraModelo() }
+}
+
+class CaixaRepositoryRoom(private val dao: CaixaDao) : CaixaRepository {
+    override fun observarAberto(): Flow<Caixa?> = dao.observarAberto().map { it?.paraModelo() }
+    override fun observarFechados(): Flow<List<Caixa>> = dao.observarFechados().map { l -> l.map { it.paraModelo() } }
+    override suspend fun buscarAberto(): Caixa? = dao.buscarAberto()?.paraModelo()
+    override suspend fun buscar(id: Long): Caixa? = dao.buscar(id)?.paraModelo()
+    override suspend fun salvar(caixa: Caixa): Long = dao.salvar(caixa)
 }
 
 class UsuarioRepositoryRoom(private val dao: UsuarioDao) : UsuarioRepository {

@@ -6,6 +6,7 @@ import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.pagamento.Impressora
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
+import br.com.comandapag.core.pagamento.SolicitacaoEstorno
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
 import kotlinx.coroutines.delay
@@ -43,6 +44,12 @@ class TerminalSimulado : TerminalPagamento {
             bandeira = if (solicitacao.forma == FormaPagamento.PIX) null else "VISA",
             mensagem = "TRANSAÇÃO AUTORIZADA",
         )
+    }
+
+    override suspend fun estornar(solicitacao: SolicitacaoEstorno, aoMudarStatus: (String) -> Unit): ResultadoPagamento {
+        aoMudarStatus("ESTORNANDO")
+        delay(1200)
+        return ResultadoPagamento.Aprovado(solicitacao.codigoTransacao, solicitacao.idTransacao, null, "ESTORNO REALIZADO")
     }
 
     override suspend fun cancelarOperacao() {

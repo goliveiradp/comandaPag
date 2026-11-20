@@ -26,6 +26,7 @@ class FluxoComandaTest : TesteDeTela() {
         esperarTexto("Primeiro acesso")
         capturar("00-primeiro-acesso")
         criarAdministrador("Dono", "1234")
+        abrirCaixa()
         capturar("01-sem-comandas")
 
         // Produtos

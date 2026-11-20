@@ -55,7 +55,8 @@ object ExtratoComanda {
             linhas += separador
             for (p in comanda.pagamentos) {
                 val parcelas = if (p.parcelas > 1) " ${p.parcelas}x" else ""
-                linhas += colunasEsqDir("${p.forma.descricao}$parcelas", Dinheiro.formatar(p.valorCentavos), colunas)
+                val estorno = if (p.estornado) " ESTORNADO" else ""
+                linhas += colunasEsqDir("${p.forma.descricao}$parcelas$estorno", Dinheiro.formatar(p.valorCentavos), colunas)
                 p.valorRecebidoCentavos?.takeIf { p.trocoCentavos > 0 }?.let {
                     linhas += colunasEsqDir("   Recebido", Dinheiro.formatar(it), colunas)
                     linhas += colunasEsqDir("   Troco", Dinheiro.formatar(p.trocoCentavos), colunas)
