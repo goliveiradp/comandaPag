@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.DadosFiscais
+import br.com.comandapag.core.modelo.EventoComanda
+import br.com.comandapag.core.modelo.TipoEvento
 import br.com.comandapag.core.modelo.NotaFiscalConsumidor
 import br.com.comandapag.core.modelo.StatusNfce
 import br.com.comandapag.core.modelo.FormaPagamento
@@ -141,8 +143,13 @@ class RepositorioRoomTest {
             ref = "cmd1", status = StatusNfce.AUTORIZADA, ambiente = "HOMOLOGACAO", emitidaEm = 5,
             numero = "12", serie = "1", chave = "2".repeat(44), qrCodeUrl = "http://qr", cpf = "52998224725",
         )
-        val id = comandas.salvar(Comanda(identificacao = "Mesa 1", abertaEm = 1, nfce = nota, tentativasNfce = 2))
+        val historico = listOf(
+            EventoComanda(1, TipoEvento.ABRIU, "Ana"),
+            EventoComanda(2, TipoEvento.REMOVEU, "Carlos", "Bruno", produtoId = 7, item = "Chopp", quantidade = 1),
+        )
+        val id = comandas.salvar(Comanda(identificacao = "Mesa 1", abertaEm = 1, nfce = nota, tentativasNfce = 2, historico = historico))
         val lida = comandas.buscar(id)!!
+        assertEquals(historico, lida.historico)
         assertEquals(nota, lida.nfce)
         assertEquals(2, lida.tentativasNfce)
     }

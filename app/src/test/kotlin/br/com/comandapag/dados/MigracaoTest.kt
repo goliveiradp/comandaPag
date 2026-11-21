@@ -191,6 +191,18 @@ class MigracaoTest {
         }
     }
 
+    @Test
+    fun migracao7Para8AdicionaHistorico() {
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-7-8.db"
+        helper.createDatabase(nome, 7).use { db ->
+            db.execSQL("INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico) VALUES (1, 'Mesa 1', 1, 'ABERTA', 0)")
+        }
+        helper.runMigrationsAndValidate(nome, 8, true, BancoDeDados.MIGRACAO_7_8).use { db ->
+            db.query("SELECT historico FROM comandas").use { c -> assertTrue(c.moveToFirst()); assertTrue(c.isNull(0)) }
+        }
+    }
+
     private companion object {
         val NOVAS = setOf(Permissao.ESTORNAR, Permissao.OPERAR_CAIXA)
 

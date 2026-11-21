@@ -79,6 +79,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val nfceAtiva by vm.nfceAtiva.collectAsStateWithLifecycle()
     val estadoNfce by vm.estadoNfce.collectAsStateWithLifecycle()
     var confirmarCancelarNfce by remember { mutableStateOf(false) }
+    var mostrarHistorico by remember { mutableStateOf(false) }
     var estornando by remember { mutableStateOf<Int?>(null) }
     val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
     val autorizador = rememberAutorizador()
@@ -142,13 +143,19 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                         IconButton(onClick = vm::imprimirExtrato, enabled = c != null && c.itens.isNotEmpty()) {
                             Icon(Icons.Filled.Print, "Imprimir extrato")
                         }
-                        if (aberta) {
+                        if (c != null) {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Mais opções") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Cancelar comanda") },
-                                    onClick = { menu = false; confirmarCancelamento = true },
+                                    text = { Text("Histórico da comanda") },
+                                    onClick = { menu = false; mostrarHistorico = true },
                                 )
+                                if (aberta) {
+                                    DropdownMenuItem(
+                                        text = { Text("Cancelar comanda") },
+                                        onClick = { menu = false; confirmarCancelamento = true },
+                                    )
+                                }
                             }
                         }
                     },
@@ -190,6 +197,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                     itemsIndexed(c.itens) { indice, item ->
                         LinhaItem(
                             item = item,
+                            lancadoPor = c.lancadoPor(item),
                             editavel = aberta,
                             aoAlterar = { nova ->
                                 val u = usuario
@@ -247,6 +255,8 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
             if (quitada) aoVoltar()
         },
     )
+
+    if (mostrarHistorico && c != null) DialogoHistorico(c) { mostrarHistorico = false }
 
     DialogosNfce(
         estado = estadoNfce,
@@ -312,7 +322,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
 }
 
 @Composable
-private fun LinhaItem(item: ItemComanda, editavel: Boolean, aoAlterar: (Int) -> Unit) {
+private fun LinhaItem(item: ItemComanda, lancadoPor: List<String>, editavel: Boolean, aoAlterar: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -331,6 +341,13 @@ private fun LinhaItem(item: ItemComanda, editavel: Boolean, aoAlterar: (Int) -> 
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
+            if (lancadoPor.isNotEmpty()) {
+                Text(
+                    "Lançado por ${lancadoPor.joinToString(", ")}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (editavel && item.setor != SetorProducao.NENHUM) {
                 val pendente = item.quantidadePendente
                 Text(
@@ -459,4 +476,47 @@ private fun LinhaValor(rotulo: String, centavos: Long) {
         Text(rotulo, Modifier.weight(1f))
         Text(Dinheiro.formatar(centavos))
     }
+}
+
+/** Linha do tempo da comanda: ações nos itens, pagamentos, estornos e NFC-e. */
+@Composable
+private fun DialogoHistorico(comanda: Comanda, aoFechar: () -> Unit) {
+    val linhas = remember(comanda) { linhaDoTempo(comanda) }
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text("Histórico da ${comanda.identificacao}") },
+        text = {
+            LazyColumn {
+                itemsIndexed(linhas) { _, (hora, texto) ->
+                    Row(Modifier.padding(vertical = 4.dp)) {
+                        Text(hora, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(48.dp))
+                        Text(texto, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = aoFechar) { Text("Fechar") } },
+    )
+}
+
+private fun linhaDoTempo(c: Comanda): List<Pair<String, String>> {
+    val hora = java.text.SimpleDateFormat("HH:mm", java.util.Locale.forLanguageTag("pt-BR"))
+    val eventos = mutableListOf<Pair<Long, String>>()
+    c.historico.forEach { eventos.add(it.em to it.texto()) }
+    c.pagamentos.forEach { p ->
+        val parcelas = if (p.parcelas > 1) " em ${p.parcelas}x" else ""
+        val troco = if (p.trocoCentavos > 0) " (troco ${Dinheiro.formatar(p.trocoCentavos)})" else ""
+        eventos.add(p.pagoEm to "${p.recebidoPor.ifBlank { "Alguém" }} recebeu ${Dinheiro.formatar(p.valorCentavos)} no ${p.forma.descricao}$parcelas$troco")
+        p.estornadoEm?.let { em ->
+            eventos.add(em to "${p.estornadoPor ?: "Alguém"} estornou ${Dinheiro.formatar(p.valorCentavos)} do ${p.forma.descricao}")
+        }
+    }
+    c.nfce?.let { n ->
+        if (n.autorizada || n.status == br.com.comandapag.core.modelo.StatusNfce.CANCELADA) {
+            eventos.add(n.emitidaEm to "NFC-e nº ${n.numero} emitida")
+        }
+        n.canceladaEm?.let { eventos.add(it to "NFC-e nº ${n.numero} cancelada") }
+    }
+    return eventos.sortedBy { it.first }.map { hora.format(java.util.Date(it.first)) to it.second }
 }

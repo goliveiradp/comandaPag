@@ -18,6 +18,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Nota fiscal (NFC-e)](docs/nfce.png)
 
+![Histórico da comanda](docs/historico.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -82,6 +84,10 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou
   cancelou). Aparece na lista, na comanda, no extrato e no histórico, que mostra
   as vendas do dia por garçom. Filtro "Minhas / Todas" na lista de comandas.
+- **Histórico da comanda** (menu ⋮ da comanda): vários garçons podem atender a mesma
+  mesa e fica registrado, com hora, quem abriu, adicionou e removeu cada item (e quem
+  autorizou a remoção), quem mexeu nos 10%, pagamentos, estornos, NFC-e e cancelamento.
+  Cada item mostra "Lançado por ...".
 - **Login com PIN e permissões**: cada pessoa entra com seu nome e PIN (4 a 6
   números). As permissões são individuais, com perfis prontos:
 

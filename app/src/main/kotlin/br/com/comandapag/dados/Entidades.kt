@@ -10,6 +10,8 @@ import androidx.room.Relation
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.DadosFiscais
+import br.com.comandapag.core.modelo.EventoComanda
+import kotlinx.serialization.builtins.ListSerializer
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.MovimentoCaixa
@@ -82,6 +84,8 @@ data class ComandaEntity(
     // Versão 7: NFC-e (JSON) e número de tentativas
     val nfce: String? = null,
     @ColumnInfo(defaultValue = "0") val tentativasNfce: Int = 0,
+    // Versão 8: histórico de quem fez o quê (JSON)
+    val historico: String? = null,
 )
 
 @Entity(
@@ -289,6 +293,9 @@ data class ComandaComItens(
             versao = c.versao,
             nfce = c.nfce?.let { runCatching { json.decodeFromString(NotaFiscalConsumidor.serializer(), it) }.getOrNull() },
             tentativasNfce = c.tentativasNfce,
+            historico = c.historico?.let {
+                runCatching { json.decodeFromString(ListSerializer(EventoComanda.serializer()), it) }.getOrNull()
+            }.orEmpty(),
         )
     }
 }
@@ -307,6 +314,7 @@ fun Comanda.paraEntidade() = ComandaEntity(
     versao = versao,
     nfce = nfce?.let { json.encodeToString(NotaFiscalConsumidor.serializer(), it) },
     tentativasNfce = tentativasNfce,
+    historico = historico.takeIf { it.isNotEmpty() }?.let { json.encodeToString(ListSerializer(EventoComanda.serializer()), it) },
 )
 
 private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

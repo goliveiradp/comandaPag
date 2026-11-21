@@ -120,20 +120,20 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
     private val service get() = deps.comandaService
 
     fun adicionar(produto: Produto, quantidade: Int = 1, observacao: String = "") = executar {
-        service.adicionarItem(comandaId, produto, quantidade, observacao)
+        service.adicionarItem(comandaId, produto, quantidade, observacao, operador = deps.sessao.usuario.value)
     }
 
     /** [operador] é quem fez a alteração (ou quem autorizou, no caso de diminuir/remover). */
     fun alterarQuantidade(indice: Int, quantidade: Int, operador: Usuario) = executar {
-        service.alterarQuantidade(comandaId, indice, quantidade, operador)
+        service.alterarQuantidade(comandaId, indice, quantidade, operador, solicitante = deps.sessao.usuario.value)
     }
 
     fun definirTaxaServico(ativa: Boolean, operador: Usuario) = executar {
-        service.definirTaxaServico(comandaId, ativa, operador)
+        service.definirTaxaServico(comandaId, ativa, operador, solicitante = deps.sessao.usuario.value)
     }
 
     fun cancelarComanda(operador: Usuario, aoCancelar: () -> Unit) = executar {
-        service.cancelar(comandaId, operador)
+        service.cancelar(comandaId, operador, solicitante = deps.sessao.usuario.value)
         aoCancelar()
     }
 

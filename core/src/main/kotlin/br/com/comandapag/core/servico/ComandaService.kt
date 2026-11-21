@@ -3,6 +3,7 @@ package br.com.comandapag.core.servico
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Dinheiro
+import br.com.comandapag.core.modelo.EventoComanda
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.MovimentoCaixa
@@ -11,6 +12,7 @@ import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
+import br.com.comandapag.core.modelo.TipoEvento
 import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoOperacao
@@ -66,21 +68,30 @@ class ComandaService(
             taxaServico = taxaServico,
             garcomId = responsavel.id,
             garcomNome = responsavel.nome,
+            historico = listOf(EventoComanda(agora(), TipoEvento.ABRIU, responsavel.nome)),
         )
         nova.copy(id = comandas.salvar(nova))
     }
 
+    /** Lança [quantidade] de [produto]; [operador] fica registrado no histórico da comanda. */
     suspend fun adicionarItem(
         comandaId: Long,
         produto: Produto,
         quantidade: Int = 1,
         observacao: String = "",
+        operador: Usuario? = null,
     ): Comanda = trava.withLock {
         if (quantidade <= 0) erro("A quantidade deve ser maior que zero.")
-        repetindoEmConflito { adicionarItemSemTrava(comandaId, produto, quantidade, observacao) }
+        repetindoEmConflito { adicionarItemSemTrava(comandaId, produto, quantidade, observacao, operador) }
     }
 
-    private suspend fun adicionarItemSemTrava(comandaId: Long, produto: Produto, quantidade: Int, observacao: String): Comanda {
+    private suspend fun adicionarItemSemTrava(
+        comandaId: Long,
+        produto: Produto,
+        quantidade: Int,
+        observacao: String,
+        operador: Usuario?,
+    ): Comanda {
         val comanda = comandaAberta(comandaId)
         val obs = observacao.trim()
         val indice = comanda.itens.indexOfFirst {
@@ -101,15 +112,32 @@ class ComandaService(
                 setor = produto.setor,
             )
         }
-        return salvar(comanda.copy(itens = itens))
+        val evento = EventoComanda(
+            em = agora(),
+            tipo = TipoEvento.ADICIONOU,
+            por = operador?.nome.orEmpty(),
+            produtoId = produto.id,
+            item = produto.nome,
+            observacao = obs,
+            quantidade = quantidade,
+        )
+        return salvar(comanda.copy(itens = itens, historico = comanda.historico + evento))
     }
 
     /**
      * Altera a quantidade do item na posição [indice]. Quantidade 0 remove o item.
      * Diminuir ou remover exige [Permissao.REMOVER_ITENS]. Se o que foi retirado já
      * estava na cozinha/bar, imprime um ticket de cancelamento.
+     * [operador] é quem tem a permissão; se for outra pessoa autorizando, [solicitante] é
+     * quem pediu (ex.: o garçom). Os dois ficam no histórico.
      */
-    suspend fun alterarQuantidade(comandaId: Long, indice: Int, quantidade: Int, operador: Usuario): Comanda = trava.withLock {
+    suspend fun alterarQuantidade(
+        comandaId: Long,
+        indice: Int,
+        quantidade: Int,
+        operador: Usuario,
+        solicitante: Usuario? = null,
+    ): Comanda = trava.withLock {
         if (quantidade < 0) erro("A quantidade não pode ser negativa.")
         // O item é identificado pela posição na tela; se outro aparelho mudar a comanda no
         // meio, a retentativa procura o mesmo item (produto, observação e preço).
@@ -127,7 +155,23 @@ class ComandaService(
             } else {
                 itens[i] = item.copy(quantidade = quantidade, quantidadeEnviada = minOf(item.quantidadeEnviada, quantidade))
             }
-            salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
+            val diferenca = quantidade - item.quantidade
+            val historico = if (diferenca == 0) {
+                comanda.historico
+            } else {
+                val (por, autorizou) = quem(operador, solicitante)
+                comanda.historico + EventoComanda(
+                    em = agora(),
+                    tipo = if (diferenca > 0) TipoEvento.ADICIONOU else TipoEvento.REMOVEU,
+                    por = por,
+                    autorizadoPor = autorizou.takeIf { diferenca < 0 },
+                    produtoId = item.produtoId,
+                    item = item.nome,
+                    observacao = item.observacao,
+                    quantidade = kotlin.math.abs(diferenca),
+                )
+            }
+            salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens, historico = historico)))
         }
 
         val cancelados = item.quantidadeEnviada - quantidade
@@ -203,28 +247,51 @@ class ComandaService(
         EnvioPedido(enviados, falhas)
     }
 
-    suspend fun removerItem(comandaId: Long, indice: Int, operador: Usuario): Comanda =
-        alterarQuantidade(comandaId, indice, 0, operador)
+    suspend fun removerItem(comandaId: Long, indice: Int, operador: Usuario, solicitante: Usuario? = null): Comanda =
+        alterarQuantidade(comandaId, indice, 0, operador, solicitante)
 
-    suspend fun definirTaxaServico(comandaId: Long, ativa: Boolean, operador: Usuario): Comanda = trava.withLock {
+    suspend fun definirTaxaServico(
+        comandaId: Long,
+        ativa: Boolean,
+        operador: Usuario,
+        solicitante: Usuario? = null,
+    ): Comanda = trava.withLock {
         repetindoEmConflito {
             val comanda = comandaAberta(comandaId)
             if (comanda.taxaServico == ativa) return@repetindoEmConflito comanda
             exigir(operador, Permissao.ALTERAR_TAXA_SERVICO)
-            salvar(semFicarAbaixoDoPago(comanda.copy(taxaServico = ativa)))
+            val (por, autorizou) = quem(operador, solicitante)
+            val evento = EventoComanda(agora(), if (ativa) TipoEvento.TAXA_LIGADA else TipoEvento.TAXA_DESLIGADA, por, autorizou)
+            salvar(semFicarAbaixoDoPago(comanda.copy(taxaServico = ativa, historico = comanda.historico + evento)))
         }
     }
 
-    suspend fun cancelar(comandaId: Long, operador: Usuario): Comanda = trava.withLock {
+    suspend fun cancelar(comandaId: Long, operador: Usuario, solicitante: Usuario? = null): Comanda = trava.withLock {
         exigir(operador, Permissao.CANCELAR_COMANDA)
         repetindoEmConflito {
             val comanda = comandaAberta(comandaId)
             if (comanda.pagamentos.any { !it.estornado }) {
                 erro("A comanda já tem pagamentos. Estorne-os antes de cancelar.")
             }
-            salvar(comanda.copy(status = StatusComanda.CANCELADA, fechadaEm = agora(), fechadaPor = operador.nome))
+            val (por, autorizou) = quem(operador, solicitante)
+            salvar(
+                comanda.copy(
+                    status = StatusComanda.CANCELADA,
+                    fechadaEm = agora(),
+                    fechadaPor = operador.nome,
+                    historico = comanda.historico + EventoComanda(agora(), TipoEvento.CANCELOU, por, autorizou),
+                ),
+            )
         }
     }
+
+    /** Quem fez (o solicitante, se houver) e quem autorizou (se foi outra pessoa). */
+    private fun quem(operador: Usuario, solicitante: Usuario?): Pair<String, String?> =
+        if (solicitante != null && solicitante.id != operador.id) {
+            solicitante.nome to operador.nome
+        } else {
+            operador.nome to null
+        }
 
     /**
      * Cobra [valorCentavos] na maquininha (crédito, débito ou PIX). Sem valor, cobra tudo o que falta.

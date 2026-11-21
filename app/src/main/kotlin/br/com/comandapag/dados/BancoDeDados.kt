@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaixaEntity::class,
         MovimentoCaixaEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class BancoDeDados : RoomDatabase() {
@@ -149,7 +149,14 @@ abstract class BancoDeDados : RoomDatabase() {
             }
         }
 
-        val MIGRACOES = arrayOf(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5, MIGRACAO_5_6, MIGRACAO_6_7)
+        /** v8: histórico da comanda (quem adicionou, removeu, cancelou...). */
+        val MIGRACAO_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `comandas` ADD COLUMN `historico` TEXT")
+            }
+        }
+
+        val MIGRACOES = arrayOf(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5, MIGRACAO_5_6, MIGRACAO_6_7, MIGRACAO_7_8)
 
         fun criar(context: Context): BancoDeDados =
             Room.databaseBuilder(context, BancoDeDados::class.java, NOME)

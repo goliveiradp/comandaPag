@@ -92,6 +92,34 @@ data class Pagamento(
     val estornado: Boolean get() = estornadoEm != null
 }
 
+enum class TipoEvento { ABRIU, ADICIONOU, REMOVEU, TAXA_LIGADA, TAXA_DESLIGADA, CANCELOU }
+
+/** Uma ação feita na comanda: quem fez, quando e, se precisou, quem autorizou. */
+@Serializable
+data class EventoComanda(
+    val em: Long,
+    val tipo: TipoEvento,
+    val por: String,
+    val autorizadoPor: String? = null,
+    val produtoId: Long? = null,
+    val item: String? = null,
+    val observacao: String = "",
+    val quantidade: Int = 0,
+) {
+    fun texto(): String {
+        val oQue = "${quantidade}x $item" + if (observacao.isNotBlank()) " ($observacao)" else ""
+        val acao = when (tipo) {
+            TipoEvento.ABRIU -> "abriu a comanda"
+            TipoEvento.ADICIONOU -> "adicionou $oQue"
+            TipoEvento.REMOVEU -> "removeu $oQue"
+            TipoEvento.TAXA_LIGADA -> "ligou os 10% de serviço"
+            TipoEvento.TAXA_DESLIGADA -> "tirou os 10% de serviço"
+            TipoEvento.CANCELOU -> "cancelou a comanda"
+        }
+        return "$por $acao" + (autorizadoPor?.let { ", autorizado por $it" } ?: "")
+    }
+}
+
 enum class StatusNfce(val descricao: String) {
     AUTORIZADA("Autorizada"),
     REJEITADA("Rejeitada"),
@@ -150,7 +178,16 @@ data class Comanda(
     val nfce: NotaFiscalConsumidor? = null,
     /** Quantas NFC-e já foram rejeitadas ou canceladas (muda a referência da próxima). */
     val tentativasNfce: Int = 0,
+    /** Quem abriu, adicionou, removeu... (vários garçons podem atender a mesma mesa). */
+    val historico: List<EventoComanda> = emptyList(),
 ) {
+    /** Quem lançou este item (nomes na ordem em que lançaram). */
+    fun lancadoPor(item: ItemComanda): List<String> =
+        historico.filter { it.tipo == TipoEvento.ADICIONOU && it.produtoId == item.produtoId && it.observacao == item.observacao }
+            .map { it.por }
+            .filter { it.isNotBlank() }
+            .distinct()
+
     /** Unidades lançadas que ainda não foram para a cozinha/bar. */
     val quantidadePendente: Int get() = itens.sumOf { it.quantidadePendente }
 
