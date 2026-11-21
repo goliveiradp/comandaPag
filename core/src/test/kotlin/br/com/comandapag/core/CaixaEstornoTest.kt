@@ -28,7 +28,7 @@ class CaixaEstornoTest {
     private val terminal = TerminalFalso()
     private var relogio = 1_000L
     private val trava = Mutex()
-    private val service = ComandaService(comandas, terminal, caixas, trava) { relogio }
+    private val service = ComandaService(comandas, terminal, caixas, trava = trava) { relogio }
     private val caixaService = CaixaService(caixas, comandas, trava) { relogio }
 
     private val garcom = Usuario(id = 1, nome = "Ana", permissoes = Perfil.GARCOM.permissoes)

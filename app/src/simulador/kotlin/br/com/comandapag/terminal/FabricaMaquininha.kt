@@ -58,9 +58,15 @@ class TerminalSimulado : TerminalPagamento {
 }
 
 class ImpressoraSimulada : Impressora {
-    override suspend fun imprimir(linhas: List<String>): ResultadoOperacao {
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao {
         Log.i("ImpressoraSimulada", "\n" + linhas.joinToString("\n"))
+        historico += linhas.joinToString("\n")
         delay(500)
         return ResultadoOperacao.Sucesso
+    }
+
+    companion object {
+        /** Tudo o que foi "impresso" (útil para conferir nos testes). */
+        val historico: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
     }
 }

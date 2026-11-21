@@ -32,6 +32,12 @@ abstract class TesteDeTela {
         regra.onAllNodes(hasText(texto, substring = true)).fetchSemanticsNodes().isNotEmpty()
     }
 
+    /** Espera um aviso (snackbar) sumir, para ele não cobrir os botões de baixo. */
+    fun esperarSumir(texto: String) = regra.waitUntil(timeoutMillis = 30_000) {
+        ShadowLooper.idleMainLooper(500, TimeUnit.MILLISECONDS)
+        regra.onAllNodes(hasText(texto, substring = true)).fetchSemanticsNodes().isEmpty()
+    }
+
     fun campo(rotulo: String): SemanticsNodeInteraction = regra.onNode(hasSetTextAction() and hasText(rotulo))
 
     /**
@@ -83,11 +89,12 @@ abstract class TesteDeTela {
 
     fun sair() = regra.onNodeWithText("Sair").performClick()
 
-    fun cadastrarProduto(nome: String, preco: String, categoria: String) {
+    fun cadastrarProduto(nome: String, preco: String, categoria: String, setor: String? = null) {
         regra.onNodeWithContentDescription("Novo produto").performClick()
         campo("Nome").performTextInput(nome)
         campo("Preço (R$)").performTextInput(preco)
         campo("Categoria (opcional)").performTextInput(categoria)
+        setor?.let { clicar(it) }
         regra.onNodeWithText("Salvar").performClick()
         esperarTexto(nome)
     }

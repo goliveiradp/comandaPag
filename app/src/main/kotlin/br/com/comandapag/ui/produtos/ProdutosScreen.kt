@@ -1,9 +1,11 @@
 package br.com.comandapag.ui.produtos
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import br.com.comandapag.Dependencias
 import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.ui.MensagemVazia
 import br.com.comandapag.ui.viewModelCom
 import kotlinx.coroutines.flow.SharingStarted
@@ -71,7 +75,9 @@ fun ProdutosScreen(modifier: Modifier = Modifier) {
                 items(produtos, key = { it.id }) { p ->
                     ListItem(
                         headlineContent = { Text(p.nome) },
-                        supportingContent = { if (p.categoria.isNotBlank()) Text(p.categoria) },
+                        supportingContent = {
+                            Text(listOf(p.categoria, p.setor.descricao).filter { it.isNotBlank() }.joinToString(" · "))
+                        },
                         trailingContent = {
                             Text(Dinheiro.formatar(p.precoCentavos), style = MaterialTheme.typography.titleSmall)
                         },
@@ -111,6 +117,7 @@ private fun DialogoProduto(
         mutableStateOf(if (produto.id == 0L) "" else Dinheiro.formatar(produto.precoCentavos).removePrefix("R$ "))
     }
     var categoria by remember { mutableStateOf(produto.categoria) }
+    var setor by remember { mutableStateOf(produto.setor) }
     val precoCentavos = Dinheiro.parse(preco)
     val valido = nome.isNotBlank() && precoCentavos != null && precoCentavos > 0
 
@@ -146,13 +153,21 @@ private fun DialogoProduto(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text("Preparo (ticket do pedido)", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SetorProducao.entries.forEach { s ->
+                        FilterChip(selected = setor == s, onClick = { setor = s }, label = { Text(s.descricao) })
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = valido,
                 onClick = {
-                    aoSalvar(produto.copy(nome = nome.trim(), precoCentavos = precoCentavos!!, categoria = categoria.trim()))
+                    aoSalvar(
+                        produto.copy(nome = nome.trim(), precoCentavos = precoCentavos!!, categoria = categoria.trim(), setor = setor),
+                    )
                 },
             ) { Text("Salvar") }
         },

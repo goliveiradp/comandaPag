@@ -71,6 +71,7 @@ class CaixaEstornoTest : TesteDeTela() {
         esperarTexto("Estornar pagamento?")
         capturar("32-confirmar-estorno")
         clicar("Estornar")
+        esperarTexto("Estorno de R$ 12,00 realizado")
         esperarTexto("ESTORNADO")
         esperarTexto("Receber") // reaberta
         capturar("33-estornado")
@@ -84,6 +85,8 @@ class CaixaEstornoTest : TesteDeTela() {
         campo("Motivo").performTextInput("Cofre")
         clicar("Confirmar")
         esperarTexto("R$ 70,00")
+        esperarTexto("Sangria registrada")
+        esperarSumir("Sangria registrada")
         capturar("34-caixa-aberto")
 
         // Fecha contando 65: falta R$ 5

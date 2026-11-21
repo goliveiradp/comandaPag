@@ -62,5 +62,13 @@ interface TerminalPagamento {
 }
 
 interface Impressora {
-    suspend fun imprimir(linhas: List<String>): ResultadoOperacao
+    /**
+     * Imprime as [linhas]. [colunas] define o tamanho da letra: a linha inteira ocupa a
+     * largura da bobina, então menos colunas = letra maior (ex.: 24 para a cozinha).
+     */
+    suspend fun imprimir(linhas: List<String>, colunas: Int = COLUNAS_PADRAO): ResultadoOperacao
+
+    companion object {
+        const val COLUNAS_PADRAO = 32
+    }
 }

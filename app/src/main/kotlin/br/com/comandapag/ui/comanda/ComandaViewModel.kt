@@ -42,6 +42,8 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
 
     val cobranca = MutableStateFlow<EstadoCobranca>(EstadoCobranca.Inativa)
 
+    val envioAutomatico: StateFlow<Boolean> = deps.preferencias.envioAutomatico
+
     val caixaAberto: StateFlow<Boolean> = deps.caixas.observarAberto().map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
@@ -55,7 +57,6 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
 
     fun adicionar(produto: Produto, quantidade: Int = 1, observacao: String = "") = executar {
         service.adicionarItem(comandaId, produto, quantidade, observacao)
-        aviso.value = "${quantidade}x ${produto.nome} adicionado"
     }
 
     /** [operador] é quem fez a alteração (ou quem autorizou, no caso de diminuir/remover). */
@@ -101,6 +102,28 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
                 aposPagar("Dinheiro recebido", "", r.trocoCentavos)
             } catch (e: RegraDeNegocioException) {
                 EstadoCobranca.Recusada(e.message ?: "Não foi possível receber")
+            }
+        }
+    }
+
+    /**
+     * Imprime os tickets da cozinha/bar com os itens novos.
+     * [seHouver] = não reclamar quando não há nada novo (envio automático).
+     */
+    fun enviarPedido(operador: Usuario, seHouver: Boolean = false) {
+        viewModelScope.launch {
+            if (seHouver && (comanda.value?.quantidadePendente ?: 0) == 0) return@launch
+            try {
+                val r = service.enviarPedido(comandaId, operador)
+                aviso.value = buildString {
+                    if (r.enviados.isNotEmpty()) append("Pedido enviado: ${r.enviados.joinToString { it.descricao }}")
+                    r.falhas.forEach { (setor, motivo) ->
+                        if (isNotEmpty()) append(". ")
+                        append("Falha ao imprimir ${setor.descricao.lowercase()}: $motivo")
+                    }
+                }
+            } catch (e: RegraDeNegocioException) {
+                if (!seHouver) aviso.value = e.message
             }
         }
     }

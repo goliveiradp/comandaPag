@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.Perfil
 import br.com.comandapag.core.modelo.Permissao
+import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -46,7 +47,12 @@ class MigracaoTest {
         }
 
         val banco = Room.databaseBuilder(context, BancoDeDados::class.java, arquivo.absolutePath)
-            .addMigrations(BancoDeDados.MIGRACAO_1_2, BancoDeDados.MIGRACAO_2_3, BancoDeDados.MIGRACAO_3_4)
+            .addMigrations(
+                BancoDeDados.MIGRACAO_1_2,
+                BancoDeDados.MIGRACAO_2_3,
+                BancoDeDados.MIGRACAO_3_4,
+                BancoDeDados.MIGRACAO_4_5,
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -54,6 +60,9 @@ class MigracaoTest {
             assertEquals("Mesa 3", comanda.identificacao)
             assertEquals(StatusComanda.ABERTA, comanda.status)
             assertEquals(2640, comanda.totalCentavos)
+            // Itens antigos contam como já enviados para a cozinha (não reimprime)
+            assertEquals(0, comanda.quantidadePendente)
+            assertEquals(SetorProducao.COZINHA, comanda.itens.single().setor)
             assertEquals("", comanda.garcomNome)
             assertNull(comanda.fechadaPor)
             assertTrue(comanda.pagamentos.isEmpty())
@@ -130,6 +139,25 @@ class MigracaoTest {
             assertEquals(Perfil.GERENTE.permissoes, permissoes["Bruno"])
             assertEquals(Perfil.CAIXA.permissoes, permissoes["Dani"])
             assertEquals(Perfil.GARCOM.permissoes, permissoes["Ana"])
+        }
+    }
+
+    @Test
+    fun migracao4Para5AdicionaSetorEMarcaItensComoEnviados() {
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-4-5.db"
+        helper.createDatabase(nome, 4).use { db ->
+            db.execSQL("INSERT INTO produtos (id, nome, precoCentavos, categoria, ativo) VALUES (1, 'Chopp', 990, 'Bebidas', 1)")
+            db.execSQL("INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico) VALUES (1, 'Mesa 1', 1, 'ABERTA', 0)")
+            db.execSQL(
+                "INSERT INTO itens_comanda (comandaId, posicao, produtoId, nome, precoUnitarioCentavos, quantidade, observacao) " +
+                    "VALUES (1, 0, 1, 'Chopp', 990, 3, '')",
+            )
+        }
+        helper.runMigrationsAndValidate(nome, 5, true, BancoDeDados.MIGRACAO_4_5).use { db ->
+            db.query("SELECT setor FROM produtos").use { c -> assertTrue(c.moveToFirst()); assertEquals("COZINHA", c.getString(0)) }
+            db.query("SELECT quantidadeEnviada FROM itens_comanda").use { c -> assertTrue(c.moveToFirst()); assertEquals(3, c.getInt(0)) }
+            db.query("SELECT pedidosEnviados FROM comandas").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
         }
     }
 

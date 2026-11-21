@@ -84,6 +84,8 @@ abstract class ComandaDao {
                     precoUnitarioCentavos = item.precoUnitarioCentavos,
                     quantidade = item.quantidade,
                     observacao = item.observacao,
+                    setor = item.setor.name,
+                    quantidadeEnviada = item.quantidadeEnviada,
                 )
             },
         )

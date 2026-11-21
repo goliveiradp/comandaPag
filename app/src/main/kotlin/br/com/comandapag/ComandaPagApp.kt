@@ -39,7 +39,13 @@ class Dependencias(app: Application) {
 
     /** Mesma trava para comandas e caixa: estornos mexem nos dois. */
     private val trava = Mutex()
-    val comandaService = ComandaService(comandas, maquininha.terminal, caixas, trava)
+    val comandaService = ComandaService(
+        comandas = comandas,
+        terminal = maquininha.terminal,
+        caixas = caixas,
+        impressoraProducao = maquininha.impressora,
+        trava = trava,
+    )
     val caixaService = CaixaService(caixas, comandas, trava)
     val usuarioService = UsuarioService(usuarios)
     val sessao = Sessao(usuarios, CoroutineScope(SupervisorJob() + Dispatchers.Main))

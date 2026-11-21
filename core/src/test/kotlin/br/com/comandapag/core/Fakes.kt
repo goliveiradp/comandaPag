@@ -5,6 +5,7 @@ import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.Usuario
+import br.com.comandapag.core.pagamento.Impressora
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.pagamento.SolicitacaoEstorno
@@ -95,5 +96,20 @@ class UsuarioRepositoryEmMemoria : UsuarioRepository {
         val id = if (usuario.id == 0L) proximoId++ else usuario.id
         dados.value = dados.value + (id to usuario.copy(id = id))
         return id
+    }
+}
+
+/** Impressora que guarda o que foi impresso; pode falhar para setores escolhidos. */
+class ImpressoraFalsa : Impressora {
+    val impressoes = mutableListOf<List<String>>()
+    /** Falha quando o texto contém alguma destas palavras (ex.: "BAR"). */
+    val falharSeContiver = mutableSetOf<String>()
+
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao {
+        if (falharSeContiver.any { palavra -> linhas.any { it.contains(palavra) } }) {
+            return ResultadoOperacao.Falha("SEM PAPEL")
+        }
+        impressoes += linhas
+        return ResultadoOperacao.Sucesso
     }
 }

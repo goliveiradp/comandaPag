@@ -109,10 +109,10 @@ class PlugPagTerminal(private val context: Context) : TerminalPagamento, Impress
         withContext(Dispatchers.IO) { runCatching { plugPag.abort() } }
     }
 
-    override suspend fun imprimir(linhas: List<String>): ResultadoOperacao = withContext(Dispatchers.IO) {
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao = withContext(Dispatchers.IO) {
         runCatching {
             val arquivo = RenderizadorCupom.salvarPng(
-                RenderizadorCupom.renderizar(linhas),
+                RenderizadorCupom.renderizar(linhas, colunas),
                 File(context.cacheDir, "extrato.png"),
             )
             val r = plugPag.printFromFile(PlugPagPrinterData(arquivo.absolutePath, QUALIDADE_IMPRESSAO, AVANCO_PAPEL))

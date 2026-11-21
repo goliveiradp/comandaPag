@@ -12,6 +12,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Caixa e estorno](docs/caixa.png)
 
+![Pedido para cozinha e bar](docs/pedido.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -35,6 +37,13 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   sangria e suprimento com motivo, e fechamento: você informa o dinheiro contado
   na gaveta e o app mostra sobra ou falta. Relatório de fechamento impresso com
   vendas por forma, estornos, sangrias e suprimentos.
+- **Pedido para cozinha e bar**: cada produto tem um setor de preparo (Cozinha, Bar
+  ou "Não imprime"). A comanda mostra o que é novo e o que já foi enviado; "Enviar
+  pedido" imprime um ticket por setor, com letra grande, só com os itens novos
+  (mesa, garçom, hora, número do pedido e observações). Diminuir ou remover um item
+  que já foi para a produção imprime um ticket de **CANCELAMENTO**. Se a impressão de
+  um setor falhar, só ele fica pendente. Opcional em Ajustes: imprimir o pedido
+  automaticamente ao fechar a lista de produtos.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou

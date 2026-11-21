@@ -15,6 +15,7 @@ import br.com.comandapag.core.modelo.MovimentoCaixa
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
@@ -26,13 +27,17 @@ data class ProdutoEntity(
     val precoCentavos: Long,
     val categoria: String,
     val ativo: Boolean,
+    // Versão 5 do banco
+    @ColumnInfo(defaultValue = "COZINHA") val setor: String = SetorProducao.COZINHA.name,
 ) {
-    fun paraModelo() = Produto(id, nome, precoCentavos, categoria, ativo)
+    fun paraModelo() = Produto(id, nome, precoCentavos, categoria, ativo, setorDe(setor))
 
     companion object {
-        fun de(p: Produto) = ProdutoEntity(p.id, p.nome, p.precoCentavos, p.categoria, p.ativo)
+        fun de(p: Produto) = ProdutoEntity(p.id, p.nome, p.precoCentavos, p.categoria, p.ativo, p.setor.name)
     }
 }
+
+private fun setorDe(nome: String) = SetorProducao.entries.firstOrNull { it.name == nome } ?: SetorProducao.COZINHA
 
 @Entity(tableName = "comandas", indices = [Index("status")])
 data class ComandaEntity(
@@ -55,6 +60,8 @@ data class ComandaEntity(
     @ColumnInfo(defaultValue = "0") val garcomId: Long = 0,
     @ColumnInfo(defaultValue = "") val garcomNome: String = "",
     val fechadaPor: String? = null,
+    // Versão 5 do banco
+    @ColumnInfo(defaultValue = "0") val pedidosEnviados: Int = 0,
 )
 
 @Entity(
@@ -79,6 +86,9 @@ data class ItemComandaEntity(
     val precoUnitarioCentavos: Long,
     val quantidade: Int,
     val observacao: String,
+    // Versão 5 do banco
+    @ColumnInfo(defaultValue = "COZINHA") val setor: String = SetorProducao.COZINHA.name,
+    @ColumnInfo(defaultValue = "0") val quantidadeEnviada: Int = 0,
 )
 
 @Entity(
@@ -234,7 +244,15 @@ data class ComandaComItens(
             identificacao = c.identificacao,
             abertaEm = c.abertaEm,
             itens = itens.sortedBy { it.posicao }.map {
-                ItemComanda(it.produtoId, it.nome, it.precoUnitarioCentavos, it.quantidade, it.observacao)
+                ItemComanda(
+                    produtoId = it.produtoId,
+                    nome = it.nome,
+                    precoUnitarioCentavos = it.precoUnitarioCentavos,
+                    quantidade = it.quantidade,
+                    observacao = it.observacao,
+                    setor = setorDe(it.setor),
+                    quantidadeEnviada = it.quantidadeEnviada,
+                )
             },
             status = StatusComanda.valueOf(c.status),
             taxaServico = c.taxaServico,
@@ -243,6 +261,7 @@ data class ComandaComItens(
             garcomId = c.garcomId,
             garcomNome = c.garcomNome,
             fechadaPor = c.fechadaPor,
+            pedidosEnviados = c.pedidosEnviados,
         )
     }
 }
@@ -257,6 +276,7 @@ fun Comanda.paraEntidade() = ComandaEntity(
     garcomId = garcomId,
     garcomNome = garcomNome,
     fechadaPor = fechadaPor,
+    pedidosEnviados = pedidosEnviados,
 )
 
 @Entity(tableName = "usuarios")

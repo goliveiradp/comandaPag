@@ -9,17 +9,26 @@ import br.com.comandapag.core.modelo.MovimentoCaixa
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
+import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
+import br.com.comandapag.core.pagamento.Impressora
+import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.pagamento.SolicitacaoEstorno
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
+import br.com.comandapag.core.producao.ItemPedido
+import br.com.comandapag.core.producao.PedidoProducao
+import br.com.comandapag.core.producao.TicketProducao
 import br.com.comandapag.core.repositorio.CaixaRepository
 import br.com.comandapag.core.repositorio.ComandaRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** Resultado do envio de um pedido: setores impressos e os que falharam (com o motivo). */
+data class EnvioPedido(val enviados: List<SetorProducao>, val falhas: Map<SetorProducao, String>)
 
 /** Resultado de um recebimento em dinheiro. */
 data class RecebimentoDinheiro(val trocoCentavos: Long, val comanda: Comanda) {
@@ -36,6 +45,8 @@ class ComandaService(
     private val comandas: ComandaRepository,
     private val terminal: TerminalPagamento,
     private val caixas: CaixaRepository,
+    /** Impressora dos tickets de cozinha/bar. Sem ela, não é possível enviar pedidos. */
+    private val impressoraProducao: Impressora? = null,
     /**
      * Toda alteração lê a comanda, modifica e grava. Sem essa trava, dois toques
      * rápidos em "adicionar" leriam a mesma versão e um item se perderia.
@@ -86,6 +97,7 @@ class ComandaService(
                 precoUnitarioCentavos = produto.precoCentavos,
                 quantidade = quantidade,
                 observacao = obs,
+                setor = produto.setor,
             )
         }
         salvar(comanda.copy(itens = itens))
@@ -93,16 +105,81 @@ class ComandaService(
 
     /**
      * Altera a quantidade do item na posição [indice]. Quantidade 0 remove o item.
-     * Diminuir ou remover exige [Permissao.REMOVER_ITENS].
+     * Diminuir ou remover exige [Permissao.REMOVER_ITENS]. Se o que foi retirado já
+     * estava na cozinha/bar, imprime um ticket de cancelamento.
      */
     suspend fun alterarQuantidade(comandaId: Long, indice: Int, quantidade: Int, operador: Usuario): Comanda = trava.withLock {
         if (quantidade < 0) erro("A quantidade não pode ser negativa.")
         val comanda = comandaAberta(comandaId)
         if (indice !in comanda.itens.indices) erro("Item não encontrado na comanda.")
-        if (quantidade < comanda.itens[indice].quantidade) exigir(operador, Permissao.REMOVER_ITENS)
+        val item = comanda.itens[indice]
+        if (quantidade < item.quantidade) exigir(operador, Permissao.REMOVER_ITENS)
         val itens = comanda.itens.toMutableList()
-        if (quantidade == 0) itens.removeAt(indice) else itens[indice] = itens[indice].copy(quantidade = quantidade)
-        salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
+        if (quantidade == 0) {
+            itens.removeAt(indice)
+        } else {
+            itens[indice] = item.copy(quantidade = quantidade, quantidadeEnviada = minOf(item.quantidadeEnviada, quantidade))
+        }
+        val salva = salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
+
+        val cancelados = item.quantidadeEnviada - quantidade
+        if (cancelados > 0 && item.setor != SetorProducao.NENHUM) {
+            impressoraProducao?.let { impressora ->
+                val pedido = PedidoProducao(
+                    setor = item.setor,
+                    comanda = comanda.identificacao,
+                    garcom = operador.nome,
+                    numero = 0,
+                    em = agora(),
+                    itens = listOf(ItemPedido(cancelados, item.nome, item.observacao)),
+                    cancelamento = true,
+                )
+                // Se a impressão falhar, a alteração continua valendo
+                runCatching { impressora.imprimir(TicketProducao.gerar(pedido), TicketProducao.COLUNAS) }
+            }
+        }
+        salva
+    }
+
+    /**
+     * Envia para a cozinha/bar os itens ainda não enviados: imprime um ticket por setor.
+     * Só os setores impressos com sucesso são marcados como enviados; os outros continuam
+     * pendentes para tentar de novo.
+     */
+    suspend fun enviarPedido(comandaId: Long, operador: Usuario): EnvioPedido = trava.withLock {
+        val impressora = impressoraProducao ?: erro("Impressora não disponível.")
+        val comanda = comandaAberta(comandaId)
+        val pendentes = comanda.itens.filter { it.quantidadePendente > 0 }
+        if (pendentes.isEmpty()) erro("Não há itens novos para enviar.")
+
+        val numero = comanda.pedidosEnviados + 1
+        val momento = agora()
+        val enviados = mutableListOf<SetorProducao>()
+        val falhas = mutableMapOf<SetorProducao, String>()
+        for ((setor, itensDoSetor) in pendentes.groupBy { it.setor }.toSortedMap()) {
+            val pedido = PedidoProducao(
+                setor = setor,
+                comanda = comanda.identificacao,
+                garcom = comanda.garcomNome.ifBlank { operador.nome },
+                numero = numero,
+                em = momento,
+                itens = itensDoSetor.map { ItemPedido(it.quantidadePendente, it.nome, it.observacao) },
+            )
+            val r = runCatching { impressora.imprimir(TicketProducao.gerar(pedido), TicketProducao.COLUNAS) }
+                .getOrElse { ResultadoOperacao.Falha(it.message ?: "Erro ao imprimir") }
+            when (r) {
+                ResultadoOperacao.Sucesso -> enviados += setor
+                is ResultadoOperacao.Falha -> falhas[setor] = r.mensagem
+            }
+        }
+
+        if (enviados.isNotEmpty()) {
+            val itens = comanda.itens.map {
+                if (it.setor in enviados || it.setor == SetorProducao.NENHUM) it.copy(quantidadeEnviada = it.quantidade) else it
+            }
+            salvar(comanda.copy(itens = itens, pedidosEnviados = numero))
+        }
+        EnvioPedido(enviados, falhas)
     }
 
     suspend fun removerItem(comandaId: Long, indice: Int, operador: Usuario): Comanda =

@@ -18,10 +18,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,11 +50,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.filterNotNull
 import br.com.comandapag.core.impressao.ExtratoComanda
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.Permissao
+import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.ui.MensagemVazia
@@ -67,9 +71,9 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val comanda by vm.comanda.collectAsStateWithLifecycle()
     val produtos by vm.produtos.collectAsStateWithLifecycle()
     val cobranca by vm.cobranca.collectAsStateWithLifecycle()
-    val aviso by vm.aviso.collectAsStateWithLifecycle()
     val pessoas by vm.pessoasRestantes.collectAsStateWithLifecycle()
     val caixaAberto by vm.caixaAberto.collectAsStateWithLifecycle()
+    val envioAutomatico by vm.envioAutomatico.collectAsStateWithLifecycle()
     var estornando by remember { mutableStateOf<Int?>(null) }
     val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
     val autorizador = rememberAutorizador()
@@ -81,8 +85,9 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(aviso) {
-        aviso?.let {
+    // Mostra cada aviso uma vez. A chave fixa evita que limpar o aviso cancele a exibição.
+    LaunchedEffect(Unit) {
+        vm.aviso.filterNotNull().collect {
             vm.aviso.value = null
             snackbar.showSnackbar(it)
         }
@@ -95,7 +100,11 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
         SeletorProdutos(
             produtos = produtos,
             quantidadesNaComanda = c?.itens.orEmpty().groupBy { it.produtoId }.mapValues { (_, l) -> l.sumOf { it.quantidade } },
-            aoFechar = { mostrarProdutos = false },
+            aoFechar = {
+                mostrarProdutos = false
+                val u = usuario
+                if (envioAutomatico && u != null) vm.enviarPedido(u, seHouver = true)
+            },
             aoAdicionar = { produto, qtd, obs -> vm.adicionar(produto, qtd, obs) },
         )
     } else {
@@ -150,6 +159,7 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                         },
                         aoAdicionar = { mostrarProdutos = true },
                         aoEstornar = { estornando = it },
+                        aoEnviarPedido = { usuario?.let { vm.enviarPedido(it) } },
                         aoCobrar = { autorizador.exigir(Permissao.COBRAR) { cobrador = it } },
                     )
                 }
@@ -281,6 +291,18 @@ private fun LinhaItem(item: ItemComanda, editavel: Boolean, aoAlterar: (Int) -> 
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
+            if (editavel && item.setor != SetorProducao.NENHUM) {
+                val pendente = item.quantidadePendente
+                Text(
+                    when {
+                        pendente == 0 -> "Enviado (${item.setor.descricao.lowercase()})"
+                        item.quantidadeEnviada == 0 -> "Novo · não enviado"
+                        else -> "$pendente novo(s) · ${item.quantidadeEnviada} enviado(s)"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (pendente > 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline,
+                )
+            }
         }
         if (editavel) {
             IconButton(onClick = { aoAlterar(item.quantidade - 1) }) { Icon(Icons.Filled.Remove, "Diminuir") }
@@ -298,6 +320,7 @@ private fun Resumo(
     aoAlterarTaxa: (Boolean) -> Unit,
     aoAdicionar: () -> Unit,
     aoEstornar: (Int) -> Unit,
+    aoEnviarPedido: () -> Unit,
     aoCobrar: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
@@ -360,9 +383,16 @@ private fun Resumo(
                     )
                 }
             }
+            if (comanda.estaAberta && comanda.quantidadePendente > 0) {
+                FilledTonalButton(onClick = aoEnviarPedido, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Icon(Icons.Filled.Restaurant, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Enviar pedido (${comanda.quantidadePendente})")
+                }
+            }
             if (comanda.estaAberta) {
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(onClick = aoAdicionar, modifier = Modifier.weight(1f)) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,6 +58,8 @@ class ConfiguracoesViewModel(private val deps: Dependencias) : ViewModel() {
 
     fun definirNome(nome: String) = deps.preferencias.definirNomeEstabelecimento(nome)
     fun definirTaxaPadrao(ativa: Boolean) = deps.preferencias.definirTaxaServicoPadrao(ativa)
+    val envioAutomatico = deps.preferencias.envioAutomatico
+    fun definirEnvioAutomatico(ativo: Boolean) = deps.preferencias.definirEnvioAutomatico(ativo)
 
     fun ativar(codigo: String) {
         viewModelScope.launch {
@@ -144,9 +148,27 @@ private fun Estabelecimento(vm: ConfiguracoesViewModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Button(onClick = { vm.definirNome(nome) }, enabled = nome != nomeSalvo) { Text("Salvar nome") }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(value = taxaPadrao, role = Role.Switch, onValueChange = vm::definirTaxaPadrao),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text("Novas comandas com 10% de serviço", Modifier.weight(1f))
-        Switch(checked = taxaPadrao, onCheckedChange = vm::definirTaxaPadrao)
+        Switch(checked = taxaPadrao, onCheckedChange = null)
+    }
+    val envio by vm.envioAutomatico.collectAsStateWithLifecycle()
+    Row(
+        Modifier.fillMaxWidth().toggleable(value = envio, role = Role.Switch, onValueChange = vm::definirEnvioAutomatico),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Imprimir pedido ao fechar a lista de produtos")
+            Text(
+                "Envia os itens novos para a cozinha/bar sem precisar tocar em \"Enviar pedido\".",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = envio, onCheckedChange = null)
     }
 }
 

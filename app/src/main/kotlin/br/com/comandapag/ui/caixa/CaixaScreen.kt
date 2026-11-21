@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.filterNotNull
 import androidx.lifecycle.viewModelScope
 import br.com.comandapag.Dependencias
 import br.com.comandapag.core.impressao.ExtratoComanda
@@ -121,13 +122,13 @@ fun CaixaScreen(modifier: Modifier = Modifier, usuario: Usuario) {
     val resumo by vm.resumo.collectAsStateWithLifecycle()
     val carregado by vm.carregado.collectAsStateWithLifecycle()
     val fechados by vm.fechados.collectAsStateWithLifecycle()
-    val aviso by vm.aviso.collectAsStateWithLifecycle()
     val relatorio by vm.relatorio.collectAsStateWithLifecycle()
     var dialogo by remember { mutableStateOf<Dialogo?>(null) }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(aviso) {
-        aviso?.let {
+    // Mostra cada aviso uma vez. A chave fixa evita que limpar o aviso cancele a exibição.
+    LaunchedEffect(Unit) {
+        vm.aviso.filterNotNull().collect {
             vm.aviso.value = null
             snackbar.showSnackbar(it)
         }

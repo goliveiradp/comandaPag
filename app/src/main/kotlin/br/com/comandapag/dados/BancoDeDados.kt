@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaixaEntity::class,
         MovimentoCaixaEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class BancoDeDados : RoomDatabase() {
@@ -113,9 +113,23 @@ abstract class BancoDeDados : RoomDatabase() {
             }
         }
 
+        /**
+         * v5: setor de produção (cozinha/bar) nos produtos e itens, e controle do que já foi
+         * enviado. Itens de comandas existentes contam como já enviados, para não reimprimir.
+         */
+        val MIGRACAO_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `produtos` ADD COLUMN `setor` TEXT NOT NULL DEFAULT 'COZINHA'")
+                db.execSQL("ALTER TABLE `itens_comanda` ADD COLUMN `setor` TEXT NOT NULL DEFAULT 'COZINHA'")
+                db.execSQL("ALTER TABLE `itens_comanda` ADD COLUMN `quantidadeEnviada` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE `itens_comanda` SET `quantidadeEnviada` = `quantidade`")
+                db.execSQL("ALTER TABLE `comandas` ADD COLUMN `pedidosEnviados` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun criar(context: Context): BancoDeDados =
             Room.databaseBuilder(context, BancoDeDados::class.java, NOME)
-                .addMigrations(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4)
+                .addMigrations(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5)
                 .build()
     }
 }

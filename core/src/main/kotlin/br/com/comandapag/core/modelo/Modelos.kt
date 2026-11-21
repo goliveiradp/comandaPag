@@ -1,11 +1,20 @@
 package br.com.comandapag.core.modelo
 
+/** Onde o item é preparado; define em qual ticket de produção ele sai. */
+enum class SetorProducao(val descricao: String) {
+    COZINHA("Cozinha"),
+    BAR("Bar"),
+    /** Item pronto (ex.: água em garrafa): não gera ticket. */
+    NENHUM("Não imprime"),
+}
+
 data class Produto(
     val id: Long = 0,
     val nome: String,
     val precoCentavos: Long,
     val categoria: String = "",
     val ativo: Boolean = true,
+    val setor: SetorProducao = SetorProducao.COZINHA,
 )
 
 data class ItemComanda(
@@ -14,8 +23,15 @@ data class ItemComanda(
     val precoUnitarioCentavos: Long,
     val quantidade: Int,
     val observacao: String = "",
+    val setor: SetorProducao = SetorProducao.COZINHA,
+    /** Quantas unidades já foram enviadas para a cozinha/bar. */
+    val quantidadeEnviada: Int = 0,
 ) {
     val subtotalCentavos: Long get() = precoUnitarioCentavos * quantidade
+
+    /** Unidades lançadas que ainda não foram para a produção. */
+    val quantidadePendente: Int
+        get() = if (setor == SetorProducao.NENHUM) 0 else (quantidade - quantidadeEnviada).coerceAtLeast(0)
 }
 
 enum class StatusComanda { ABERTA, PAGA, CANCELADA }
@@ -66,7 +82,12 @@ data class Comanda(
     val garcomNome: String = "",
     /** Quem cobrou ou cancelou a comanda. */
     val fechadaPor: String? = null,
+    /** Quantos pedidos de produção já foram enviados (numera os tickets). */
+    val pedidosEnviados: Int = 0,
 ) {
+    /** Unidades lançadas que ainda não foram para a cozinha/bar. */
+    val quantidadePendente: Int get() = itens.sumOf { it.quantidadePendente }
+
     val subtotalCentavos: Long get() = itens.sumOf { it.subtotalCentavos }
 
     /** 10% do subtotal, arredondado para o centavo mais próximo. */
