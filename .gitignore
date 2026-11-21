@@ -9,3 +9,7 @@ captures/
 *.aab
 *.jks
 *.keystore
+
+# Chave de assinatura (nunca no Git)
+keystore.properties
+*.jks

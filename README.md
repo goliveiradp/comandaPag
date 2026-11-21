@@ -170,6 +170,22 @@ Os APKs ficam em `app/build/outputs/apk/<flavor>/debug/`.
    notas de teste.
 4. Com o contador, confira NCM/CFOP/CSOSN de cada produto e passe para **Produção**.
 
+## Versão definitiva (release)
+
+1. Crie a chave de assinatura no Android Studio: **Build > Generate Signed Bundle / APK >
+   APK > Create new...** Guarde o `.jks` e as senhas com backup (sem eles não é possível
+   atualizar o app nas maquininhas). A chave **nunca** vai para o Git.
+2. Copie `keystore.properties.exemplo` para `keystore.properties` (ignorado pelo Git) e
+   preencha o caminho do `.jks` e as senhas.
+3. Gere o APK da maquininha:
+
+   ```bash
+   ./gradlew :app:assembleSmartRelease
+   ```
+
+   O APK assinado fica em `app/build/outputs/apk/smart/release/app-smart-release.apk`.
+4. A cada nova versão, aumente `versionCode` (e `versionName`) em `app/build.gradle.kts`.
+
 ## Instalando na Smart 2
 
 A PagBank só permite apps de terceiros nas maquininhas depois de **homologação**:

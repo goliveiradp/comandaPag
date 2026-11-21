@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,6 +19,22 @@ android {
         versionName = "1.0.0"
     }
 
+    // Chave de assinatura da versão definitiva. Fica FORA do Git, em keystore.properties
+    // (veja keystore.properties.exemplo). Sem o arquivo, o release sai sem assinatura.
+    val chave = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { arquivo ->
+        Properties().apply { arquivo.inputStream().use { load(it) } }
+    }
+    signingConfigs {
+        if (chave != null) {
+            create("release") {
+                storeFile = rootProject.file(chave.getProperty("storeFile"))
+                storePassword = chave.getProperty("storePassword")
+                keyAlias = chave.getProperty("keyAlias")
+                keyPassword = chave.getProperty("keyPassword")
+            }
+        }
+    }
+
     flavorDimensions += "terminal"
     productFlavors {
         // Roda na maquininha PagBank Smart 2, cobrando de verdade pelo PlugPag.
@@ -33,8 +51,11 @@ android {
 
     buildTypes {
         release {
+            // Sem ofuscação/encolhimento: PlugPag, Room, Ktor e serialização usam reflexão
+            // e isso ainda não foi testado numa Smart 2 real.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
