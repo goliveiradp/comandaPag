@@ -21,7 +21,11 @@ interface ComandaRepository {
     fun observar(id: Long): Flow<Comanda?>
     suspend fun buscar(id: Long): Comanda?
     suspend fun buscarAbertaPorIdentificacao(identificacao: String): Comanda?
-    /** Insere (id = 0) ou atualiza a comanda e seus itens. Retorna o id. */
+    /**
+     * Insere (id = 0) ou atualiza a comanda e seus itens. Retorna o id.
+     * Na atualização, [Comanda.versao] precisa ser a versão gravada; senão lança
+     * ConflitoDeVersaoException (outro aparelho gravou antes). A versão gravada passa a ser +1.
+     */
     suspend fun salvar(comanda: Comanda): Long
 
     /** Todos os pagamentos (inclusive estornados) recebidos no caixa [caixaId]. */
@@ -33,7 +37,7 @@ interface CaixaRepository {
     fun observarFechados(): Flow<List<Caixa>>
     suspend fun buscarAberto(): Caixa?
     suspend fun buscar(id: Long): Caixa?
-    /** Insere (id = 0) ou atualiza o caixa e seus movimentos. Retorna o id. */
+    /** Insere (id = 0) ou atualiza o caixa e seus movimentos (com controle de versão). Retorna o id. */
     suspend fun salvar(caixa: Caixa): Long
 }
 

@@ -45,9 +45,12 @@ class CaixaService(
     suspend fun fechar(valorContadoCentavos: Long, operador: Usuario): ResumoCaixa = trava.withLock {
         exigir(operador)
         if (valorContadoCentavos < 0) erro("O valor contado não pode ser negativo.")
-        val caixa = caixas.buscarAberto() ?: erro("Não há caixa aberto.")
-        val fechado = caixa.copy(fechadoEm = agora(), fechadoPor = operador.nome, valorContadoCentavos = valorContadoCentavos)
-        caixas.salvar(fechado)
+        val fechado = repetindoEmConflito {
+            val caixa = caixas.buscarAberto() ?: erro("Não há caixa aberto.")
+            val f = caixa.copy(fechadoEm = agora(), fechadoPor = operador.nome, valorContadoCentavos = valorContadoCentavos)
+            caixas.salvar(f)
+            f.copy(versao = f.versao + 1)
+        }
         resumo(fechado)
     }
 
@@ -55,16 +58,18 @@ class CaixaService(
         trava.withLock {
             exigir(operador)
             if (valor <= 0) erro("Informe um valor maior que zero.")
-            val caixa = caixas.buscarAberto() ?: erro("Abra o caixa primeiro.")
-            if (tipo == TipoMovimento.SANGRIA) {
-                val disponivel = resumo(caixa).dinheiroEsperadoCentavos
-                if (valor > disponivel) erro("Sangria maior que o dinheiro do caixa (${Dinheiro.formatar(disponivel)}).")
+            repetindoEmConflito {
+                val caixa = caixas.buscarAberto() ?: erro("Abra o caixa primeiro.")
+                if (tipo == TipoMovimento.SANGRIA) {
+                    val disponivel = resumo(caixa).dinheiroEsperadoCentavos
+                    if (valor > disponivel) erro("Sangria maior que o dinheiro do caixa (${Dinheiro.formatar(disponivel)}).")
+                }
+                val atualizado = caixa.copy(
+                    movimentos = caixa.movimentos + MovimentoCaixa(tipo, valor, motivo.trim(), agora(), operador.nome),
+                )
+                caixas.salvar(atualizado)
+                atualizado.copy(versao = atualizado.versao + 1)
             }
-            val atualizado = caixa.copy(
-                movimentos = caixa.movimentos + MovimentoCaixa(tipo, valor, motivo.trim(), agora(), operador.nome),
-            )
-            caixas.salvar(atualizado)
-            atualizado
         }
 
     private fun exigir(operador: Usuario) {

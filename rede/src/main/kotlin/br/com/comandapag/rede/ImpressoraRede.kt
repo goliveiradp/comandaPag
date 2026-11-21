@@ -1,0 +1,66 @@
+package br.com.comandapag.rede
+
+import br.com.comandapag.core.pagamento.Impressora
+import br.com.comandapag.core.pagamento.ResultadoOperacao
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.text.Normalizer
+
+/**
+ * Impressora térmica de rede no padrão ESC/POS (Epson, Elgin, Bematech, Daruma...),
+ * que recebe os dados na porta TCP 9100.
+ */
+class ImpressoraRede(
+    val host: String,
+    val porta: Int = PORTA_PADRAO,
+    private val tempoLimiteMs: Int = 4_000,
+) : Impressora {
+
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao = withContext(Dispatchers.IO) {
+        try {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, porta), tempoLimiteMs)
+                socket.soTimeout = tempoLimiteMs
+                socket.getOutputStream().apply {
+                    write(escPos(linhas, letraGrande = colunas <= 24))
+                    flush()
+                }
+            }
+            ResultadoOperacao.Sucesso
+        } catch (e: Exception) {
+            ResultadoOperacao.Falha("Impressora $host não respondeu (${e.message ?: e.javaClass.simpleName})")
+        }
+    }
+
+    companion object {
+        const val PORTA_PADRAO = 9100
+
+        private val INICIAR = byteArrayOf(0x1B, 0x40) // ESC @
+        private val LETRA_NORMAL = byteArrayOf(0x1D, 0x21, 0x00) // GS ! 0
+        private val ALTURA_DUPLA = byteArrayOf(0x1D, 0x21, 0x01) // GS ! 1 (mesma largura, dobro da altura)
+        private val AVANCAR_E_CORTAR = byteArrayOf(0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00) // ESC d 4, GS V B 0
+
+        /**
+         * Monta os bytes ESC/POS. Os acentos são removidos, porque cada modelo usa uma
+         * tabela de caracteres diferente e o ticket precisa sair legível em todas.
+         */
+        fun escPos(linhas: List<String>, letraGrande: Boolean): ByteArray {
+            val saida = ByteArrayOutputStream()
+            saida.write(INICIAR)
+            saida.write(if (letraGrande) ALTURA_DUPLA else LETRA_NORMAL)
+            linhas.forEach { saida.write((semAcentos(it) + "\n").toByteArray(Charsets.US_ASCII)) }
+            saida.write(LETRA_NORMAL)
+            saida.write(AVANCAR_E_CORTAR)
+            return saida.toByteArray()
+        }
+
+        fun semAcentos(texto: String): String =
+            Normalizer.normalize(texto, Normalizer.Form.NFD)
+                .replace(Regex("\\p{Mn}+"), "")
+                .map { if (it.code in 32..126) it else '?' }
+                .joinToString("")
+    }
+}

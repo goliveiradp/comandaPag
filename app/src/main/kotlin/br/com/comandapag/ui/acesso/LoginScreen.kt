@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +46,7 @@ import br.com.comandapag.Dependencias
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.seguranca.Pin
 import br.com.comandapag.core.servico.RegraDeNegocioException
+import br.com.comandapag.ui.rede.DialogoConectarServidor
 import br.com.comandapag.ui.viewModelCom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -100,6 +103,7 @@ fun LoginScreen() {
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("ComandaPag", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            AvisoTerminalSemConexao()
             when {
                 existe == null || usuarios == null -> Unit
                 existe == false -> PrimeiroAcesso(erro, ocupado, vm::criarAdministrador)
@@ -176,6 +180,16 @@ private fun PrimeiroAcesso(erro: String?, ocupado: Boolean, aoCriar: (String, St
         Button(onClick = { aoCriar(nome, pin) }, enabled = valido && !ocupado, modifier = Modifier.fillMaxWidth()) {
             Text("Criar administrador e entrar")
         }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text(
+            "Já tem outra maquininha com o ComandaPag no estabelecimento?",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        var conectar by remember { mutableStateOf(false) }
+        OutlinedButton(onClick = { conectar = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Conectar a um servidor")
+        }
+        if (conectar) DialogoConectarServidor(aoFechar = { conectar = false })
     }
 }
 
@@ -191,4 +205,39 @@ fun CampoPin(valor: String, aoMudar: (String) -> Unit, rotulo: String, erro: Boo
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
         modifier = modifier.fillMaxWidth(),
     )
+}
+
+/** No modo terminal sem conexão, explica o problema e permite desfazer o pareamento. */
+@Composable
+private fun AvisoTerminalSemConexao() {
+    val deps = br.com.comandapag.ui.dependencias()
+    if (deps.modo != br.com.comandapag.rede.ModoRede.TERMINAL) return
+    val conectado by deps.conectado.collectAsStateWithLifecycle()
+    if (conectado) return
+    val contexto = androidx.compose.ui.platform.LocalContext.current
+    var confirmar by remember { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Sem conexão com o servidor", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            Text(
+                "Verifique se a maquininha servidor está ligada e no mesmo Wi-Fi (${deps.enderecoServidor}).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = { confirmar = true }) { Text("Desconectar deste servidor") }
+        }
+    }
+    if (confirmar) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmar = false },
+            title = { Text("Desconectar do servidor?") },
+            text = { Text("Esta maquininha volta a funcionar sozinha. Para voltar à rede, será preciso parear de novo.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deps.rede.virarIndependente()
+                    br.com.comandapag.ui.rede.reiniciarApp(contexto)
+                }) { Text("Desconectar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmar = false }) { Text("Cancelar") } },
+        )
+    }
 }

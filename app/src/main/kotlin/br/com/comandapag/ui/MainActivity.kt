@@ -29,11 +29,13 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Usuario
+import br.com.comandapag.rede.ModoRede
 import br.com.comandapag.ui.acesso.LoginScreen
 import br.com.comandapag.ui.caixa.CaixaScreen
 import br.com.comandapag.ui.comanda.ComandaScreen
@@ -104,7 +106,22 @@ private fun Principal(usuario: Usuario, aoSair: () -> Unit) {
                     title = {
                         Column {
                             Text(usuario.nome, maxLines = 1)
-                            Text(usuario.descricaoPerfil, style = MaterialTheme.typography.labelMedium)
+                            val deps = dependencias()
+                            val conectado by deps.conectado.collectAsStateWithLifecycle()
+                            val pendentes by deps.pagamentosPendentes.collectAsStateWithLifecycle()
+                            val situacao = when {
+                                !conectado -> "Sem conexão com o servidor"
+                                pendentes > 0 -> "$pendentes pagamento(s) aguardando envio"
+                                deps.modo == ModoRede.SERVIDOR -> "${usuario.descricaoPerfil} · servidor"
+                                deps.modo == ModoRede.TERMINAL -> "${usuario.descricaoPerfil} · conectado"
+                                else -> usuario.descricaoPerfil
+                            }
+                            Text(
+                                situacao,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (!conectado || pendentes > 0) MaterialTheme.colorScheme.error else Color.Unspecified,
+                                maxLines = 1,
+                            )
                         }
                     },
                     actions = {

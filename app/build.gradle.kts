@@ -47,6 +47,13 @@ android {
         compose = true
     }
 
+    packaging {
+        resources {
+            // Arquivos repetidos nas bibliotecas do Ktor (servidor/cliente da rede local)
+            excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties")
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
@@ -68,6 +75,7 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":rede"))
 
     // PagBank PlugPag: só no flavor que roda na maquininha
     "smartImplementation"("br.com.uol.pagseguro.plugpagservice.wrapper:wrapper:1.35.0")

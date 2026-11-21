@@ -14,6 +14,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Pedido para cozinha e bar](docs/pedido.png)
 
+![Rede e impressoras](docs/rede.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -44,6 +46,20 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   que já foi para a produção imprime um ticket de **CANCELAMENTO**. Se a impressão de
   um setor falhar, só ele fica pendente. Opcional em Ajustes: imprimir o pedido
   automaticamente ao fechar a lista de produtos.
+- **Várias maquininhas na rede local** (Ajustes > Rede): uma maquininha (ou celular/
+  tablet Android) é o **Servidor** e as outras se conectam como **Terminal** pelo Wi-Fi
+  do estabelecimento, sem internet e sem mensalidade. Comandas, produtos, usuários e
+  um **caixa único** são compartilhados.
+  - Pareamento: o servidor mostra o IP e um código de 6 dígitos; só aparelhos
+    pareados acessam os dados. "Gerar novo código" desconecta todos.
+  - Dois garçons mexendo na mesma comanda ao mesmo tempo: nada se perde (cada
+    gravação confere a versão e, se outro aparelho gravou antes, refaz a operação).
+  - A cobrança acontece na maquininha do garçom. Se o Wi-Fi cair logo depois de
+    aprovar, o pagamento fica guardado no aparelho e é enviado sozinho quando a
+    conexão voltar (o app avisa para não cobrar de novo).
+  - O servidor roda com uma notificação fixa para continuar ativo com a tela apagada.
+- **Impressoras de rede**: a cozinha e o bar podem imprimir numa impressora térmica
+  de rede ESC/POS (porta 9100) em vez da maquininha, com botão de teste.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou
@@ -84,6 +100,8 @@ core/   Regras de negócio em Kotlin puro (sem Android) + testes
         ├─ pagamento/    Interfaces TerminalPagamento e Impressora
         ├─ repositorio/  Interfaces de persistência
         └─ impressao/    ExtratoComanda (texto do cupom em 32 colunas)
+rede/   Rede local em Kotlin puro: servidor HTTP (Ktor), cliente, repositórios remotos,
+        pareamento e impressora ESC/POS + testes com servidor de verdade
 app/    App Android (Jetpack Compose + Room)
         ├─ src/main       Telas, banco de dados, renderização do cupom
         ├─ src/smart      Integração real com o PlugPag (PagBank)
@@ -103,8 +121,8 @@ O app tem dois *flavors*:
 Requisitos: Android Studio (ou JDK 17+ e Android SDK 35).
 
 ```bash
-# Testes das regras de negócio
-./gradlew :core:test
+# Testes das regras de negócio e da rede local
+./gradlew :core:test :rede:test
 
 # APK para testar no emulador/celular (sem cobrança real)
 ./gradlew :app:assembleSimuladorDebug

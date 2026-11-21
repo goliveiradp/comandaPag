@@ -39,6 +39,8 @@ import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.seguranca.Pin
 import br.com.comandapag.core.servico.RegraDeNegocioException
 import br.com.comandapag.ui.acesso.CampoPin
+import br.com.comandapag.ui.rede.SecaoImpressoras
+import br.com.comandapag.ui.rede.SecaoRede
 import br.com.comandapag.ui.viewModelCom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -109,6 +111,10 @@ fun ConfiguracoesScreen(modifier: Modifier = Modifier, usuario: Usuario, aoGeren
         if (podeConfigurar) {
             HorizontalDivider()
             Estabelecimento(vm)
+            HorizontalDivider()
+            SecaoImpressoras()
+            HorizontalDivider()
+            SecaoRede()
             HorizontalDivider()
             Maquininha(vm)
         }

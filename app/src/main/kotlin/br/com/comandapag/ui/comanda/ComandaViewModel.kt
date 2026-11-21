@@ -30,6 +30,9 @@ sealed interface EstadoCobranca {
         val trocoCentavos: Long = 0,
     ) : EstadoCobranca
     data class Recusada(val mensagem: String) : EstadoCobranca
+
+    /** Aprovado na maquininha, mas o servidor não respondeu: fica guardado e é reenviado sozinho. */
+    data object AprovadoSemServidor : EstadoCobranca
 }
 
 class ComandaViewModel(private val comandaId: Long, private val deps: Dependencias) : ViewModel() {
@@ -83,7 +86,14 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
                     if (cobranca.value is EstadoCobranca.EmAndamento) cobranca.value = EstadoCobranca.EmAndamento(status)
                 }
                 when (r) {
-                    is ResultadoPagamento.Aprovado -> aposPagar("Pagamento aprovado", r.mensagem ?: "", trocoCentavos = 0)
+                    is ResultadoPagamento.Aprovado -> {
+                        deps.atualizarPendentes()
+                        if (r.registroPendente) {
+                            EstadoCobranca.AprovadoSemServidor
+                        } else {
+                            aposPagar("Pagamento aprovado", r.mensagem ?: "", trocoCentavos = 0)
+                        }
+                    }
                     is ResultadoPagamento.Recusado -> EstadoCobranca.Recusada(
                         r.mensagem + (r.codigoErro?.takeIf { it.isNotBlank() }?.let { " (código $it)" } ?: ""),
                     )

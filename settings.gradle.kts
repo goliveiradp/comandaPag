@@ -23,4 +23,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "comandaPag"
-include(":core", ":app")
+include(":core", ":rede", ":app")

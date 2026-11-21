@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class ProducaoTest {
     private val repo = ComandaRepositoryEmMemoria()
     private val impressora = ImpressoraFalsa()
-    private val service = ComandaService(repo, TerminalFalso(), CaixaRepositoryEmMemoria(), impressora) { 1_000L }
+    private val service = ComandaService(repo, TerminalFalso(), CaixaRepositoryEmMemoria(), { impressora }) { 1_000L }
 
     private val garcom = Usuario(id = 1, nome = "Ana", permissoes = Perfil.GARCOM.permissoes)
     private val gerente = Usuario(id = 2, nome = "Bruno", permissoes = Perfil.GERENTE.permissoes)

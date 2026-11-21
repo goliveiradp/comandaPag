@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.servico.ConflitoDeVersaoException
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -68,11 +69,22 @@ abstract class ComandaDao {
     @Query("SELECT * FROM pagamentos WHERE caixaId = :caixaId ORDER BY pagoEm")
     abstract suspend fun pagamentosDoCaixa(caixaId: Long): List<PagamentoEntity>
 
-    /** Salva a comanda e substitui todos os seus itens e pagamentos numa única transação. */
+    @Query("SELECT versao FROM comandas WHERE id = :id")
+    protected abstract suspend fun versaoGravada(id: Long): Long?
+
+    /**
+     * Salva a comanda e substitui todos os seus itens e pagamentos numa única transação.
+     * Recusa (ConflitoDeVersaoException) se outro aparelho gravou depois da leitura.
+     */
     @Transaction
     open suspend fun salvar(comanda: Comanda): Long {
-        val entidade = comanda.paraEntidade()
-        val id = if (comanda.id == 0L) inserir(entidade) else entidade.id.also { atualizar(entidade) }
+        val id = if (comanda.id == 0L) {
+            inserir(comanda.copy(versao = 0).paraEntidade())
+        } else {
+            val gravada = versaoGravada(comanda.id)
+            if (gravada != null && gravada != comanda.versao) throw ConflitoDeVersaoException()
+            comanda.id.also { atualizar(comanda.copy(versao = comanda.versao + 1).paraEntidade()) }
+        }
         apagarItens(id)
         inserirItens(
             comanda.itens.mapIndexed { i, item ->
@@ -140,10 +152,19 @@ abstract class CaixaDao {
     @Query("DELETE FROM movimentos_caixa WHERE caixaId = :caixaId")
     protected abstract suspend fun apagarMovimentos(caixaId: Long)
 
+    @Query("SELECT versao FROM caixas WHERE id = :id")
+    protected abstract suspend fun versaoGravada(id: Long): Long?
+
+    /** Salva o caixa e seus movimentos, com o mesmo controle de versão das comandas. */
     @Transaction
     open suspend fun salvar(caixa: Caixa): Long {
-        val entidade = caixa.paraEntidade()
-        val id = if (caixa.id == 0L) inserir(entidade) else entidade.id.also { atualizar(entidade) }
+        val id = if (caixa.id == 0L) {
+            inserir(caixa.copy(versao = 0).paraEntidade())
+        } else {
+            val gravada = versaoGravada(caixa.id)
+            if (gravada != null && gravada != caixa.versao) throw ConflitoDeVersaoException()
+            caixa.id.also { atualizar(caixa.copy(versao = caixa.versao + 1).paraEntidade()) }
+        }
         apagarMovimentos(id)
         inserirMovimentos(
             caixa.movimentos.mapIndexed { i, m ->

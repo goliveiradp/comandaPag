@@ -23,6 +23,8 @@ sealed interface ResultadoPagamento {
         val idTransacao: String?,
         val bandeira: String?,
         val mensagem: String?,
+        /** Aprovado na maquininha, mas ainda não gravado no servidor (será reenviado). */
+        val registroPendente: Boolean = false,
     ) : ResultadoPagamento
 
     data class Recusado(val mensagem: String, val codigoErro: String? = null) : ResultadoPagamento

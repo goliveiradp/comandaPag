@@ -1,5 +1,7 @@
 package br.com.comandapag.core.modelo
 
+import kotlinx.serialization.Serializable
+
 /** O que cada usuário pode fazer no app. */
 enum class Permissao(val descricao: String) {
     COBRAR("Cobrar comandas na maquininha"),
@@ -40,6 +42,7 @@ enum class Perfil(val descricao: String, val permissoes: Set<Permissao>) {
     }
 }
 
+@Serializable
 data class Usuario(
     val id: Long = 0,
     val nome: String,

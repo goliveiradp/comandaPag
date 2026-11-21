@@ -1,5 +1,7 @@
 package br.com.comandapag.core.modelo
 
+import kotlinx.serialization.Serializable
+
 enum class TipoMovimento(val descricao: String) {
     /** Dinheiro colocado na gaveta (ex.: reforço de troco). */
     SUPRIMENTO("Suprimento"),
@@ -9,6 +11,7 @@ enum class TipoMovimento(val descricao: String) {
     ESTORNO("Estorno"),
 }
 
+@Serializable
 data class MovimentoCaixa(
     val tipo: TipoMovimento,
     val valorCentavos: Long,
@@ -19,6 +22,7 @@ data class MovimentoCaixa(
     val forma: FormaPagamento? = null,
 )
 
+@Serializable
 data class Caixa(
     val id: Long = 0,
     val abertoEm: Long,
@@ -30,6 +34,8 @@ data class Caixa(
     val fechadoPor: String? = null,
     /** Dinheiro contado na gaveta no fechamento. */
     val valorContadoCentavos: Long? = null,
+    /** Controle de gravação entre aparelhos (como em Comanda.versao). */
+    val versao: Long = 0,
 ) {
     val aberto: Boolean get() = fechadoEm == null
 }

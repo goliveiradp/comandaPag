@@ -14,11 +14,13 @@ import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
+import br.com.comandapag.core.servico.ConflitoDeVersaoException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +109,23 @@ class RepositorioRoomTest {
         caixas.salvar(lido.copy(fechadoEm = 9, fechadoPor = "Dani", valorContadoCentavos = 6_500))
         assertNull(caixas.buscarAberto())
         assertEquals(6_500L, caixas.observarFechados().first().single().valorContadoCentavos)
+    }
+
+    @Test
+    fun recusaGravacaoComVersaoVelha() = runBlocking {
+        val id = comandas.salvar(Comanda(identificacao = "Mesa 1", abertaEm = 1))
+        val lida = comandas.buscar(id)!!
+        assertEquals(0, lida.versao)
+        comandas.salvar(lida.copy(taxaServico = true))
+        assertEquals(1, comandas.buscar(id)!!.versao)
+        assertThrows(ConflitoDeVersaoException::class.java) { runBlocking { comandas.salvar(lida.copy(identificacao = "X")) } }
+        assertEquals("Mesa 1", comandas.buscar(id)!!.identificacao)
+
+        val caixaId = caixas.salvar(Caixa(abertoEm = 1, abertoPor = "Dani", valorInicialCentavos = 0))
+        val caixa = caixas.buscar(caixaId)!!
+        caixas.salvar(caixa.copy(valorInicialCentavos = 100))
+        assertThrows(ConflitoDeVersaoException::class.java) { runBlocking { caixas.salvar(caixa.copy(valorInicialCentavos = 200)) } }
+        assertEquals(100L, caixas.buscar(caixaId)!!.valorInicialCentavos)
     }
 
     @Test

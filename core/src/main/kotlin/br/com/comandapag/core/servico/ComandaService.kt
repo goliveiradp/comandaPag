@@ -13,12 +13,12 @@ import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.TipoMovimento
 import br.com.comandapag.core.modelo.Usuario
-import br.com.comandapag.core.pagamento.Impressora
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.pagamento.SolicitacaoEstorno
 import br.com.comandapag.core.pagamento.SolicitacaoPagamento
 import br.com.comandapag.core.pagamento.TerminalPagamento
+import br.com.comandapag.core.producao.ImpressorasProducao
 import br.com.comandapag.core.producao.ItemPedido
 import br.com.comandapag.core.producao.PedidoProducao
 import br.com.comandapag.core.producao.TicketProducao
@@ -35,22 +35,19 @@ data class RecebimentoDinheiro(val trocoCentavos: Long, val comanda: Comanda) {
     val quitada: Boolean get() = comanda.status == StatusComanda.PAGA
 }
 
-open class RegraDeNegocioException(mensagem: String) : Exception(mensagem)
-
-/** O usuário não tem a [permissao]; a interface pode pedir a autorização de outra pessoa. */
-class SemPermissaoException(val permissao: Permissao) :
-    RegraDeNegocioException("Sem permissão para: ${permissao.descricao.lowercase()}.")
-
 class ComandaService(
     private val comandas: ComandaRepository,
     private val terminal: TerminalPagamento,
     private val caixas: CaixaRepository,
-    /** Impressora dos tickets de cozinha/bar. Sem ela, não é possível enviar pedidos. */
-    private val impressoraProducao: Impressora? = null,
+    /** Impressoras dos tickets de cozinha/bar. Sem elas, não é possível enviar pedidos. */
+    private val impressoras: ImpressorasProducao? = null,
+    /** Onde ficam os pagamentos aprovados que não chegaram ao servidor. */
+    private val pendentes: PagamentosPendentes = PagamentosPendentesEmMemoria(),
     /**
      * Toda alteração lê a comanda, modifica e grava. Sem essa trava, dois toques
      * rápidos em "adicionar" leriam a mesma versão e um item se perderia.
      * É compartilhada com o [CaixaService], porque estornos também mexem no caixa.
+     * Entre aparelhos diferentes, quem protege é a versão da comanda (ver [repetindoEmConflito]).
      */
     private val trava: Mutex = Mutex(),
     private val agora: () -> Long = System::currentTimeMillis,
@@ -80,6 +77,10 @@ class ComandaService(
         observacao: String = "",
     ): Comanda = trava.withLock {
         if (quantidade <= 0) erro("A quantidade deve ser maior que zero.")
+        repetindoEmConflito { adicionarItemSemTrava(comandaId, produto, quantidade, observacao) }
+    }
+
+    private suspend fun adicionarItemSemTrava(comandaId: Long, produto: Produto, quantidade: Int, observacao: String): Comanda {
         val comanda = comandaAberta(comandaId)
         val obs = observacao.trim()
         val indice = comanda.itens.indexOfFirst {
@@ -100,7 +101,7 @@ class ComandaService(
                 setor = produto.setor,
             )
         }
-        salvar(comanda.copy(itens = itens))
+        return salvar(comanda.copy(itens = itens))
     }
 
     /**
@@ -110,24 +111,31 @@ class ComandaService(
      */
     suspend fun alterarQuantidade(comandaId: Long, indice: Int, quantidade: Int, operador: Usuario): Comanda = trava.withLock {
         if (quantidade < 0) erro("A quantidade não pode ser negativa.")
-        val comanda = comandaAberta(comandaId)
-        if (indice !in comanda.itens.indices) erro("Item não encontrado na comanda.")
-        val item = comanda.itens[indice]
-        if (quantidade < item.quantidade) exigir(operador, Permissao.REMOVER_ITENS)
-        val itens = comanda.itens.toMutableList()
-        if (quantidade == 0) {
-            itens.removeAt(indice)
-        } else {
-            itens[indice] = item.copy(quantidade = quantidade, quantidadeEnviada = minOf(item.quantidadeEnviada, quantidade))
+        // O item é identificado pela posição na tela; se outro aparelho mudar a comanda no
+        // meio, a retentativa procura o mesmo item (produto, observação e preço).
+        val alvo = comandaAberta(comandaId).itens.getOrNull(indice) ?: erro("Item não encontrado na comanda.")
+        var item = alvo
+        val salva = repetindoEmConflito {
+            val comanda = comandaAberta(comandaId)
+            val i = comanda.itens.indexOfFirst { it.mesmoItemQue(alvo) }
+            if (i < 0) erro("Item não encontrado na comanda.")
+            item = comanda.itens[i]
+            if (quantidade < item.quantidade) exigir(operador, Permissao.REMOVER_ITENS)
+            val itens = comanda.itens.toMutableList()
+            if (quantidade == 0) {
+                itens.removeAt(i)
+            } else {
+                itens[i] = item.copy(quantidade = quantidade, quantidadeEnviada = minOf(item.quantidadeEnviada, quantidade))
+            }
+            salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
         }
-        val salva = salvar(semFicarAbaixoDoPago(comanda.copy(itens = itens)))
 
         val cancelados = item.quantidadeEnviada - quantidade
         if (cancelados > 0 && item.setor != SetorProducao.NENHUM) {
-            impressoraProducao?.let { impressora ->
+            impressoras?.para(item.setor)?.let { impressora ->
                 val pedido = PedidoProducao(
                     setor = item.setor,
-                    comanda = comanda.identificacao,
+                    comanda = salva.identificacao,
                     garcom = operador.nome,
                     numero = 0,
                     em = agora(),
@@ -147,16 +155,16 @@ class ComandaService(
      * pendentes para tentar de novo.
      */
     suspend fun enviarPedido(comandaId: Long, operador: Usuario): EnvioPedido = trava.withLock {
-        val impressora = impressoraProducao ?: erro("Impressora não disponível.")
+        val impressoras = impressoras ?: erro("Impressora não disponível.")
         val comanda = comandaAberta(comandaId)
-        val pendentes = comanda.itens.filter { it.quantidadePendente > 0 }
-        if (pendentes.isEmpty()) erro("Não há itens novos para enviar.")
+        val novos = comanda.itens.filter { it.quantidadePendente > 0 }
+        if (novos.isEmpty()) erro("Não há itens novos para enviar.")
 
         val numero = comanda.pedidosEnviados + 1
         val momento = agora()
         val enviados = mutableListOf<SetorProducao>()
         val falhas = mutableMapOf<SetorProducao, String>()
-        for ((setor, itensDoSetor) in pendentes.groupBy { it.setor }.toSortedMap()) {
+        for ((setor, itensDoSetor) in novos.groupBy { it.setor }.toSortedMap()) {
             val pedido = PedidoProducao(
                 setor = setor,
                 comanda = comanda.identificacao,
@@ -165,7 +173,7 @@ class ComandaService(
                 em = momento,
                 itens = itensDoSetor.map { ItemPedido(it.quantidadePendente, it.nome, it.observacao) },
             )
-            val r = runCatching { impressora.imprimir(TicketProducao.gerar(pedido), TicketProducao.COLUNAS) }
+            val r = runCatching { impressoras.para(setor).imprimir(TicketProducao.gerar(pedido), TicketProducao.COLUNAS) }
                 .getOrElse { ResultadoOperacao.Falha(it.message ?: "Erro ao imprimir") }
             when (r) {
                 ResultadoOperacao.Sucesso -> enviados += setor
@@ -174,10 +182,23 @@ class ComandaService(
         }
 
         if (enviados.isNotEmpty()) {
-            val itens = comanda.itens.map {
-                if (it.setor in enviados || it.setor == SetorProducao.NENHUM) it.copy(quantidadeEnviada = it.quantidade) else it
+            // Marca como enviado exatamente o que foi impresso. Se outro aparelho mexeu na
+            // comanda depois da leitura, aplica sobre a versão nova sem reimprimir.
+            val impressos = novos.filter { it.setor in enviados }
+            repetindoEmConflito {
+                val atual = comandaAberta(comandaId)
+                val itens = atual.itens.map { item ->
+                    val impresso = impressos.firstOrNull { it.mesmoItemQue(item) }
+                    when {
+                        impresso != null -> item.copy(
+                            quantidadeEnviada = minOf(item.quantidade, item.quantidadeEnviada + impresso.quantidadePendente),
+                        )
+                        item.setor == SetorProducao.NENHUM -> item.copy(quantidadeEnviada = item.quantidade)
+                        else -> item
+                    }
+                }
+                salvar(atual.copy(itens = itens, pedidosEnviados = maxOf(atual.pedidosEnviados, numero)))
             }
-            salvar(comanda.copy(itens = itens, pedidosEnviados = numero))
         }
         EnvioPedido(enviados, falhas)
     }
@@ -186,25 +207,23 @@ class ComandaService(
         alterarQuantidade(comandaId, indice, 0, operador)
 
     suspend fun definirTaxaServico(comandaId: Long, ativa: Boolean, operador: Usuario): Comanda = trava.withLock {
-        val comanda = comandaAberta(comandaId)
-        if (comanda.taxaServico == ativa) return@withLock comanda
-        exigir(operador, Permissao.ALTERAR_TAXA_SERVICO)
-        salvar(semFicarAbaixoDoPago(comanda.copy(taxaServico = ativa)))
+        repetindoEmConflito {
+            val comanda = comandaAberta(comandaId)
+            if (comanda.taxaServico == ativa) return@repetindoEmConflito comanda
+            exigir(operador, Permissao.ALTERAR_TAXA_SERVICO)
+            salvar(semFicarAbaixoDoPago(comanda.copy(taxaServico = ativa)))
+        }
     }
 
     suspend fun cancelar(comandaId: Long, operador: Usuario): Comanda = trava.withLock {
         exigir(operador, Permissao.CANCELAR_COMANDA)
-        val comanda = comandaAberta(comandaId)
-        if (comanda.pagamentos.any { !it.estornado }) {
-            erro("A comanda já tem pagamentos. Estorne-os antes de cancelar.")
+        repetindoEmConflito {
+            val comanda = comandaAberta(comandaId)
+            if (comanda.pagamentos.any { !it.estornado }) {
+                erro("A comanda já tem pagamentos. Estorne-os antes de cancelar.")
+            }
+            salvar(comanda.copy(status = StatusComanda.CANCELADA, fechadaEm = agora(), fechadaPor = operador.nome))
         }
-        salvar(
-            comanda.copy(
-                status = StatusComanda.CANCELADA,
-                fechadaEm = agora(),
-                fechadaPor = operador.nome,
-            ),
-        )
     }
 
     /**
@@ -244,9 +263,7 @@ class ComandaService(
         )
 
         if (resultado is ResultadoPagamento.Aprovado) {
-            registrar(
-                comanda,
-                Pagamento(
+            val pagamento = Pagamento(
                     forma = forma,
                     valorCentavos = valor,
                     parcelas = parcelas,
@@ -256,9 +273,14 @@ class ComandaService(
                     pagoEm = agora(),
                     recebidoPor = operador.nome,
                     caixaId = caixa.id,
-                ),
-                operador,
-            )
+                )
+            try {
+                registrar(comandaId, pagamento, operador.nome)
+            } catch (e: SemConexaoException) {
+                // O dinheiro já foi cobrado: guarda e reenvia quando a conexão voltar
+                pendentes.adicionar(PagamentoPendente(comandaId, pagamento, operador.nome))
+                return@withLock resultado.copy(registroPendente = true)
+            }
         }
         resultado
     }
@@ -287,7 +309,7 @@ class ComandaService(
         val abatido = minOf(parte, recebidoCentavos)
         val troco = recebidoCentavos - abatido
         val atualizada = registrar(
-            comanda,
+            comandaId,
             Pagamento(
                 forma = FormaPagamento.DINHEIRO,
                 valorCentavos = abatido,
@@ -297,7 +319,7 @@ class ComandaService(
                 trocoCentavos = troco,
                 caixaId = caixa.id,
             ),
-            operador,
+            operador.nome,
         )
         RecebimentoDinheiro(trocoCentavos = troco, comanda = atualizada)
     }
@@ -334,26 +356,30 @@ class ComandaService(
         }
 
         val momento = agora()
-        val pagamentos = comanda.pagamentos.toMutableList().also {
-            it[indicePagamento] = pagamento.copy(estornadoEm = momento, estornadoPor = operador.nome)
+        repetindoEmConflito {
+            val atual = comandas.buscar(comandaId) ?: erro("Comanda não encontrada.")
+            // Pagamentos só são acrescentados ao fim, então a posição não muda
+            val pagamentos = atual.pagamentos.toMutableList().also {
+                it[indicePagamento] = it[indicePagamento].copy(estornadoEm = momento, estornadoPor = operador.nome)
+            }
+            var atualizada = atual.copy(pagamentos = pagamentos)
+            if (atualizada.status == StatusComanda.PAGA && atualizada.restanteCentavos > 0) {
+                atualizada = atualizada.copy(status = StatusComanda.ABERTA, fechadaEm = null, fechadaPor = null)
+            }
+            salvar(atualizada)
         }
-        var atualizada = comanda.copy(pagamentos = pagamentos)
-        if (atualizada.status == StatusComanda.PAGA && atualizada.restanteCentavos > 0) {
-            atualizada = atualizada.copy(status = StatusComanda.ABERTA, fechadaEm = null, fechadaPor = null)
-        }
-        salvar(atualizada)
-        caixas.salvar(
-            caixa.copy(
-                movimentos = caixa.movimentos + MovimentoCaixa(
-                    tipo = TipoMovimento.ESTORNO,
-                    valorCentavos = pagamento.valorCentavos,
-                    motivo = "Comanda ${comanda.identificacao}",
-                    em = momento,
-                    por = operador.nome,
-                    forma = pagamento.forma,
-                ),
-            ),
+        val movimento = MovimentoCaixa(
+            tipo = TipoMovimento.ESTORNO,
+            valorCentavos = pagamento.valorCentavos,
+            motivo = "Comanda ${comanda.identificacao}",
+            em = momento,
+            por = operador.nome,
+            forma = pagamento.forma,
         )
+        repetindoEmConflito {
+            val atual = caixas.buscar(caixa.id) ?: caixa
+            caixas.salvar(atual.copy(movimentos = atual.movimentos + movimento))
+        }
         ResultadoPagamento.Aprovado(
             codigoTransacao = pagamento.codigoTransacao,
             idTransacao = pagamento.idTransacao,
@@ -365,15 +391,44 @@ class ComandaService(
     private suspend fun caixaAberto(): Caixa =
         caixas.buscarAberto() ?: erro("O caixa está fechado. Abra o caixa para receber.")
 
-    /** Acrescenta o pagamento e fecha a comanda se ela ficou quitada. */
-    private suspend fun registrar(comanda: Comanda, pagamento: Pagamento, operador: Usuario): Comanda {
-        val comPagamento = comanda.copy(pagamentos = comanda.pagamentos + pagamento)
-        val final = if (comPagamento.restanteCentavos == 0L) {
-            comPagamento.copy(status = StatusComanda.PAGA, fechadaEm = pagamento.pagoEm, fechadaPor = operador.nome)
-        } else {
-            comPagamento
+    /**
+     * Acrescenta o pagamento e fecha a comanda se ela ficou quitada. Lê a versão mais nova
+     * a cada tentativa, porque outra maquininha pode ter mexido na comanda durante a cobrança.
+     */
+    private suspend fun registrar(comandaId: Long, pagamento: Pagamento, operador: String): Comanda =
+        repetindoEmConflito {
+            val comanda = comandas.buscar(comandaId) ?: erro("Comanda não encontrada.")
+            val comPagamento = comanda.copy(pagamentos = comanda.pagamentos + pagamento)
+            val final = if (comPagamento.estaAberta && comPagamento.restanteCentavos == 0L) {
+                comPagamento.copy(status = StatusComanda.PAGA, fechadaEm = pagamento.pagoEm, fechadaPor = operador)
+            } else {
+                comPagamento
+            }
+            salvar(final)
         }
-        return salvar(final)
+
+    /** Pagamentos aprovados que ainda não chegaram ao servidor. */
+    suspend fun pagamentosPendentes(): List<PagamentoPendente> = pendentes.listar()
+
+    /**
+     * Tenta gravar os pagamentos pendentes. Retorna quantos foram gravados.
+     * Chamado periodicamente pelo app enquanto houver pendências.
+     */
+    suspend fun reenviarPendentes(): Int = trava.withLock {
+        var gravados = 0
+        for (p in pendentes.listar()) {
+            try {
+                val comanda = comandas.buscar(p.comandaId)
+                // Se já foi gravado (ex.: a resposta se perdeu mas o servidor recebeu), não duplica
+                val jaGravado = comanda?.pagamentos?.any { it.codigoTransacao == p.pagamento.codigoTransacao && it.pagoEm == p.pagamento.pagoEm } == true
+                if (!jaGravado) registrar(p.comandaId, p.pagamento, p.operador)
+                pendentes.remover(p)
+                gravados++
+            } catch (_: SemConexaoException) {
+                break
+            }
+        }
+        gravados
     }
 
     /** Depois de receber parte da conta, o total não pode ficar menor do que já foi pago. */
@@ -393,10 +448,16 @@ class ComandaService(
         return comanda
     }
 
+    /** Grava e devolve a comanda já com a versão nova. */
     private suspend fun salvar(comanda: Comanda): Comanda {
-        comandas.salvar(comanda)
-        return comanda
+        val id = comandas.salvar(comanda)
+        return comanda.copy(id = id, versao = comanda.versao + 1)
     }
+
+    /** Mesmo produto, observação e preço: é a mesma linha da comanda. */
+    private fun ItemComanda.mesmoItemQue(outro: ItemComanda) =
+        produtoId == outro.produtoId && observacao == outro.observacao &&
+            precoUnitarioCentavos == outro.precoUnitarioCentavos
 
     private fun exigir(usuario: Usuario, permissao: Permissao) {
         if (!usuario.pode(permissao)) throw SemPermissaoException(permissao)

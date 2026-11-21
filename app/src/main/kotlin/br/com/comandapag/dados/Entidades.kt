@@ -62,6 +62,8 @@ data class ComandaEntity(
     val fechadaPor: String? = null,
     // Versão 5 do banco
     @ColumnInfo(defaultValue = "0") val pedidosEnviados: Int = 0,
+    // Versão 6: controle de gravação entre aparelhos
+    @ColumnInfo(defaultValue = "0") val versao: Long = 0,
 )
 
 @Entity(
@@ -168,6 +170,8 @@ data class CaixaEntity(
     val fechadoEm: Long?,
     val fechadoPor: String?,
     val valorContadoCentavos: Long?,
+    // Versão 6: controle de gravação entre aparelhos
+    @ColumnInfo(defaultValue = "0") val versao: Long = 0,
 )
 
 @Entity(
@@ -217,6 +221,7 @@ data class CaixaComMovimentos(
         fechadoEm = caixa.fechadoEm,
         fechadoPor = caixa.fechadoPor,
         valorContadoCentavos = caixa.valorContadoCentavos,
+        versao = caixa.versao,
     )
 }
 
@@ -228,6 +233,7 @@ fun Caixa.paraEntidade() = CaixaEntity(
     fechadoEm = fechadoEm,
     fechadoPor = fechadoPor,
     valorContadoCentavos = valorContadoCentavos,
+    versao = versao,
 )
 
 data class ComandaComItens(
@@ -262,6 +268,7 @@ data class ComandaComItens(
             garcomNome = c.garcomNome,
             fechadaPor = c.fechadaPor,
             pedidosEnviados = c.pedidosEnviados,
+            versao = c.versao,
         )
     }
 }
@@ -277,6 +284,7 @@ fun Comanda.paraEntidade() = ComandaEntity(
     garcomNome = garcomNome,
     fechadaPor = fechadaPor,
     pedidosEnviados = pedidosEnviados,
+    versao = versao,
 )
 
 @Entity(tableName = "usuarios")

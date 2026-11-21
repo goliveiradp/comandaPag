@@ -293,6 +293,20 @@ fun DialogoEstadoCobranca(
                 }
             },
         )
+        EstadoCobranca.AprovadoSemServidor -> AlertDialog(
+            onDismissRequest = {},
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+            icon = { Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Pagamento aprovado") },
+            text = {
+                Text(
+                    "O pagamento foi APROVADO na maquininha, mas o servidor não respondeu (Wi-Fi). " +
+                        "Ele está guardado neste aparelho e será registrado sozinho quando a conexão voltar.\n\n" +
+                        "NÃO cobre de novo.",
+                )
+            },
+            confirmButton = { TextButton(onClick = aoFechar) { Text("Entendi") } },
+        )
         is EstadoCobranca.Recusada -> AlertDialog(
             onDismissRequest = aoFechar,
             icon = { Icon(Icons.Filled.Error, null, tint = MaterialTheme.colorScheme.error) },

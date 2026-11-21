@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaixaEntity::class,
         MovimentoCaixaEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class BancoDeDados : RoomDatabase() {
@@ -127,9 +127,19 @@ abstract class BancoDeDados : RoomDatabase() {
             }
         }
 
+        /** v6: versão de gravação nas comandas e no caixa, para várias maquininhas na rede. */
+        val MIGRACAO_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `comandas` ADD COLUMN `versao` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `caixas` ADD COLUMN `versao` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRACOES = arrayOf(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5, MIGRACAO_5_6)
+
         fun criar(context: Context): BancoDeDados =
             Room.databaseBuilder(context, BancoDeDados::class.java, NOME)
-                .addMigrations(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5)
+                .addMigrations(*MIGRACOES)
                 .build()
     }
 }

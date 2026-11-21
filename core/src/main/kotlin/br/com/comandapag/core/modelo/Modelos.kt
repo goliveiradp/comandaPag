@@ -1,5 +1,7 @@
 package br.com.comandapag.core.modelo
 
+import kotlinx.serialization.Serializable
+
 /** Onde o item é preparado; define em qual ticket de produção ele sai. */
 enum class SetorProducao(val descricao: String) {
     COZINHA("Cozinha"),
@@ -8,6 +10,7 @@ enum class SetorProducao(val descricao: String) {
     NENHUM("Não imprime"),
 }
 
+@Serializable
 data class Produto(
     val id: Long = 0,
     val nome: String,
@@ -17,6 +20,7 @@ data class Produto(
     val setor: SetorProducao = SetorProducao.COZINHA,
 )
 
+@Serializable
 data class ItemComanda(
     val produtoId: Long,
     val nome: String,
@@ -43,6 +47,7 @@ enum class FormaPagamento(val descricao: String, val naMaquininha: Boolean) {
     DINHEIRO("Dinheiro", false),
 }
 
+@Serializable
 data class Pagamento(
     val forma: FormaPagamento,
     /** Quanto deste pagamento abate da comanda. */
@@ -65,6 +70,7 @@ data class Pagamento(
     val estornado: Boolean get() = estornadoEm != null
 }
 
+@Serializable
 data class Comanda(
     val id: Long = 0,
     /** Número da comanda, mesa ou nome do cliente. */
@@ -84,6 +90,11 @@ data class Comanda(
     val fechadaPor: String? = null,
     /** Quantos pedidos de produção já foram enviados (numera os tickets). */
     val pedidosEnviados: Int = 0,
+    /**
+     * Aumenta a cada gravação. Quem grava precisa informar a versão que leu; se outro
+     * aparelho gravou antes, o repositório recusa com ConflitoDeVersaoException.
+     */
+    val versao: Long = 0,
 ) {
     /** Unidades lançadas que ainda não foram para a cozinha/bar. */
     val quantidadePendente: Int get() = itens.sumOf { it.quantidadePendente }

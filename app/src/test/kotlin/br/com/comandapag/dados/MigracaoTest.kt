@@ -47,12 +47,7 @@ class MigracaoTest {
         }
 
         val banco = Room.databaseBuilder(context, BancoDeDados::class.java, arquivo.absolutePath)
-            .addMigrations(
-                BancoDeDados.MIGRACAO_1_2,
-                BancoDeDados.MIGRACAO_2_3,
-                BancoDeDados.MIGRACAO_3_4,
-                BancoDeDados.MIGRACAO_4_5,
-            )
+            .addMigrations(*BancoDeDados.MIGRACOES)
             .allowMainThreadQueries()
             .build()
         try {
@@ -158,6 +153,20 @@ class MigracaoTest {
             db.query("SELECT setor FROM produtos").use { c -> assertTrue(c.moveToFirst()); assertEquals("COZINHA", c.getString(0)) }
             db.query("SELECT quantidadeEnviada FROM itens_comanda").use { c -> assertTrue(c.moveToFirst()); assertEquals(3, c.getInt(0)) }
             db.query("SELECT pedidosEnviados FROM comandas").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+        }
+    }
+
+    @Test
+    fun migracao5Para6AdicionaVersao() {
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-5-6.db"
+        helper.createDatabase(nome, 5).use { db ->
+            db.execSQL("INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico) VALUES (1, 'Mesa 1', 1, 'ABERTA', 0)")
+            db.execSQL("INSERT INTO caixas (id, abertoEm, abertoPor, valorInicialCentavos) VALUES (1, 1, 'Dani', 0)")
+        }
+        helper.runMigrationsAndValidate(nome, 6, true, BancoDeDados.MIGRACAO_5_6).use { db ->
+            db.query("SELECT versao FROM comandas").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+            db.query("SELECT versao FROM caixas").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
         }
     }
 
