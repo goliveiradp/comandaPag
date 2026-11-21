@@ -18,7 +18,29 @@ data class Produto(
     val categoria: String = "",
     val ativo: Boolean = true,
     val setor: SetorProducao = SetorProducao.COZINHA,
+    /** Dados para a nota fiscal (definidos pelo contador). */
+    val fiscal: DadosFiscais = DadosFiscais(),
 )
+
+/**
+ * Tributação do produto na NFC-e. Os padrões servem para o Simples Nacional
+ * (CSOSN 102, CFOP 5102); o contador confirma produto a produto.
+ */
+@Serializable
+data class DadosFiscais(
+    /** NCM com 8 dígitos (ex.: 21069090 para refeições). */
+    val ncm: String = "",
+    val cfop: String = "5102",
+    /** CSOSN no Simples Nacional (102, 500...) ou CST no regime normal. */
+    val icmsSituacao: String = "102",
+    /** 0 = nacional. */
+    val origem: String = "0",
+    val unidade: String = "UN",
+    /** CST de PIS e COFINS (49 = outras operações de saída, comum no Simples). */
+    val pisCofinsSituacao: String = "49",
+) {
+    val completos: Boolean get() = ncm.length == 8 && ncm.all(Char::isDigit) && cfop.length == 4 && icmsSituacao.isNotBlank()
+}
 
 @Serializable
 data class ItemComanda(
@@ -70,6 +92,35 @@ data class Pagamento(
     val estornado: Boolean get() = estornadoEm != null
 }
 
+enum class StatusNfce(val descricao: String) {
+    AUTORIZADA("Autorizada"),
+    REJEITADA("Rejeitada"),
+    CANCELADA("Cancelada"),
+}
+
+/** Resultado da NFC-e guardado na comanda. */
+@Serializable
+data class NotaFiscalConsumidor(
+    /** Referência usada no emissor (Focus NFe). */
+    val ref: String,
+    val status: StatusNfce,
+    val ambiente: String,
+    val emitidaEm: Long,
+    val numero: String? = null,
+    val serie: String? = null,
+    val chave: String? = null,
+    val qrCodeUrl: String? = null,
+    val urlConsulta: String? = null,
+    val protocolo: String? = null,
+    val mensagem: String? = null,
+    val cpf: String? = null,
+    /** Emitida em contingência offline (Sefaz fora do ar); o emissor transmite depois. */
+    val contingencia: Boolean = false,
+    val canceladaEm: Long? = null,
+) {
+    val autorizada: Boolean get() = status == StatusNfce.AUTORIZADA
+}
+
 @Serializable
 data class Comanda(
     val id: Long = 0,
@@ -95,6 +146,10 @@ data class Comanda(
      * aparelho gravou antes, o repositório recusa com ConflitoDeVersaoException.
      */
     val versao: Long = 0,
+    /** NFC-e emitida para esta comanda (a mais recente). */
+    val nfce: NotaFiscalConsumidor? = null,
+    /** Quantas NFC-e já foram rejeitadas ou canceladas (muda a referência da próxima). */
+    val tentativasNfce: Int = 0,
 ) {
     /** Unidades lançadas que ainda não foram para a cozinha/bar. */
     val quantidadePendente: Int get() = itens.sumOf { it.quantidadePendente }

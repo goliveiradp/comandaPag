@@ -142,3 +142,48 @@ class ProdutoRepositoryEmMemoria : ProdutoRepository {
         synchronized(this) { dados.value[id]?.let { dados.value = dados.value + (id to it.copy(ativo = false)) } }
     }
 }
+
+/** Emissor de NFC-e de mentira: guarda o que recebeu e responde o que o teste mandar. */
+class EmissorNfceFalso(
+    var ativo: Boolean = true,
+    val ambiente: br.com.comandapag.core.fiscal.AmbienteFiscal = br.com.comandapag.core.fiscal.AmbienteFiscal.HOMOLOGACAO,
+) : br.com.comandapag.core.fiscal.EmissorNfce {
+    val emitidas = mutableListOf<Pair<String, br.com.comandapag.core.fiscal.NotaNfce>>()
+    val canceladas = mutableListOf<Pair<String, String>>()
+    /** Respostas guardadas por referência (para consultar). */
+    val notas = mutableMapOf<String, br.com.comandapag.core.fiscal.RespostaNfce>()
+    var rejeitar: String? = null
+    /** Simula "a nota já existe" (a resposta anterior se perdeu). */
+    var jaEmitida = false
+    var cancelamentoAceito = true
+    val emitente = br.com.comandapag.core.fiscal.Emitente("12345678000195", "Bar do Zé Ltda", "123456789", "Rua A, 1 - São Luís/MA")
+
+    override suspend fun status() = br.com.comandapag.core.fiscal.StatusEmissor(ativo, ambiente, emitente)
+
+    override suspend fun emitir(ref: String, nota: br.com.comandapag.core.fiscal.NotaNfce): br.com.comandapag.core.fiscal.RespostaNfce {
+        if (jaEmitida) throw br.com.comandapag.core.fiscal.NotaJaEmitidaException()
+        emitidas += ref to nota
+        val r = rejeitar?.let { br.com.comandapag.core.fiscal.RespostaNfce(false, mensagem = it, ambiente = ambiente) }
+            ?: br.com.comandapag.core.fiscal.RespostaNfce(
+                autorizada = true,
+                mensagem = "Autorizado o uso da NF-e",
+                numero = (emitidas.size).toString(),
+                serie = "1",
+                chave = "21261112345678000195650010000000011000000019",
+                qrCodeUrl = "http://www.nfce.sefaz.ma.gov.br/portal/consultarNFCe.jsp?p=2126111234",
+                urlConsulta = "http://www.nfce.sefaz.ma.gov.br/portal/consultaNFe.do",
+                protocolo = "221260000000001",
+                ambiente = ambiente,
+                emitente = emitente,
+            )
+        notas[ref] = r
+        return r
+    }
+
+    override suspend fun consultar(ref: String) = notas[ref]
+
+    override suspend fun cancelar(ref: String, justificativa: String): br.com.comandapag.core.fiscal.RespostaCancelamento {
+        canceladas += ref to justificativa
+        return br.com.comandapag.core.fiscal.RespostaCancelamento(cancelamentoAceito, if (cancelamentoAceito) "Cancelamento homologado" else "Prazo excedido")
+    }
+}

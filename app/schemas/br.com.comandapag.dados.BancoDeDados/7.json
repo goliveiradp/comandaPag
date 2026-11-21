@@ -1,0 +1,660 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "ee028ef97ebb173241fa96ecfb87e5ea",
+    "entities": [
+      {
+        "tableName": "produtos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `precoCentavos` INTEGER NOT NULL, `categoria` TEXT NOT NULL, `ativo` INTEGER NOT NULL, `setor` TEXT NOT NULL DEFAULT 'COZINHA', `ncm` TEXT NOT NULL DEFAULT '', `cfop` TEXT NOT NULL DEFAULT '5102', `icmsSituacao` TEXT NOT NULL DEFAULT '102', `origem` TEXT NOT NULL DEFAULT '0', `unidade` TEXT NOT NULL DEFAULT 'UN', `pisCofinsSituacao` TEXT NOT NULL DEFAULT '49')",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "precoCentavos",
+            "columnName": "precoCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoria",
+            "columnName": "categoria",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ativo",
+            "columnName": "ativo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "setor",
+            "columnName": "setor",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'COZINHA'"
+          },
+          {
+            "fieldPath": "ncm",
+            "columnName": "ncm",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "cfop",
+            "columnName": "cfop",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'5102'"
+          },
+          {
+            "fieldPath": "icmsSituacao",
+            "columnName": "icmsSituacao",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'102'"
+          },
+          {
+            "fieldPath": "origem",
+            "columnName": "origem",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'0'"
+          },
+          {
+            "fieldPath": "unidade",
+            "columnName": "unidade",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'UN'"
+          },
+          {
+            "fieldPath": "pisCofinsSituacao",
+            "columnName": "pisCofinsSituacao",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'49'"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "comandas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `identificacao` TEXT NOT NULL, `abertaEm` INTEGER NOT NULL, `status` TEXT NOT NULL, `taxaServico` INTEGER NOT NULL, `fechadaEm` INTEGER, `pagamentoForma` TEXT, `pagamentoValorCentavos` INTEGER, `pagamentoParcelas` INTEGER, `pagamentoCodigoTransacao` TEXT, `pagamentoIdTransacao` TEXT, `pagamentoBandeira` TEXT, `pagamentoEm` INTEGER, `garcomId` INTEGER NOT NULL DEFAULT 0, `garcomNome` TEXT NOT NULL DEFAULT '', `fechadaPor` TEXT, `pedidosEnviados` INTEGER NOT NULL DEFAULT 0, `versao` INTEGER NOT NULL DEFAULT 0, `nfce` TEXT, `tentativasNfce` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identificacao",
+            "columnName": "identificacao",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "abertaEm",
+            "columnName": "abertaEm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taxaServico",
+            "columnName": "taxaServico",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechadaEm",
+            "columnName": "fechadaEm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pagamentoForma",
+            "columnName": "pagamentoForma",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pagamentoValorCentavos",
+            "columnName": "pagamentoValorCentavos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pagamentoParcelas",
+            "columnName": "pagamentoParcelas",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pagamentoCodigoTransacao",
+            "columnName": "pagamentoCodigoTransacao",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pagamentoIdTransacao",
+            "columnName": "pagamentoIdTransacao",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pagamentoBandeira",
+            "columnName": "pagamentoBandeira",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pagamentoEm",
+            "columnName": "pagamentoEm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "garcomId",
+            "columnName": "garcomId",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "garcomNome",
+            "columnName": "garcomNome",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "fechadaPor",
+            "columnName": "fechadaPor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pedidosEnviados",
+            "columnName": "pedidosEnviados",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "versao",
+            "columnName": "versao",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "nfce",
+            "columnName": "nfce",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tentativasNfce",
+            "columnName": "tentativasNfce",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_comandas_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_comandas_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ]
+      },
+      {
+        "tableName": "itens_comanda",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `comandaId` INTEGER NOT NULL, `posicao` INTEGER NOT NULL, `produtoId` INTEGER NOT NULL, `nome` TEXT NOT NULL, `precoUnitarioCentavos` INTEGER NOT NULL, `quantidade` INTEGER NOT NULL, `observacao` TEXT NOT NULL, `setor` TEXT NOT NULL DEFAULT 'COZINHA', `quantidadeEnviada` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`comandaId`) REFERENCES `comandas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comandaId",
+            "columnName": "comandaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posicao",
+            "columnName": "posicao",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "produtoId",
+            "columnName": "produtoId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "precoUnitarioCentavos",
+            "columnName": "precoUnitarioCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantidade",
+            "columnName": "quantidade",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "observacao",
+            "columnName": "observacao",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "setor",
+            "columnName": "setor",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'COZINHA'"
+          },
+          {
+            "fieldPath": "quantidadeEnviada",
+            "columnName": "quantidadeEnviada",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_itens_comanda_comandaId",
+            "unique": false,
+            "columnNames": [
+              "comandaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_itens_comanda_comandaId` ON `${TABLE_NAME}` (`comandaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "comandas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "comandaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "usuarios",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nome` TEXT NOT NULL, `permissoes` TEXT NOT NULL, `ativo` INTEGER NOT NULL, `pinHash` TEXT NOT NULL, `pinSalt` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nome",
+            "columnName": "nome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "permissoes",
+            "columnName": "permissoes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ativo",
+            "columnName": "ativo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinHash",
+            "columnName": "pinHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinSalt",
+            "columnName": "pinSalt",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "pagamentos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `comandaId` INTEGER NOT NULL, `posicao` INTEGER NOT NULL, `forma` TEXT NOT NULL, `valorCentavos` INTEGER NOT NULL, `parcelas` INTEGER NOT NULL, `codigoTransacao` TEXT, `idTransacao` TEXT, `bandeira` TEXT, `pagoEm` INTEGER NOT NULL, `recebidoPor` TEXT NOT NULL, `valorRecebidoCentavos` INTEGER, `trocoCentavos` INTEGER NOT NULL, `caixaId` INTEGER, `estornadoEm` INTEGER, `estornadoPor` TEXT, FOREIGN KEY(`comandaId`) REFERENCES `comandas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "comandaId",
+            "columnName": "comandaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posicao",
+            "columnName": "posicao",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "forma",
+            "columnName": "forma",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valorCentavos",
+            "columnName": "valorCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parcelas",
+            "columnName": "parcelas",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "codigoTransacao",
+            "columnName": "codigoTransacao",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "idTransacao",
+            "columnName": "idTransacao",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bandeira",
+            "columnName": "bandeira",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pagoEm",
+            "columnName": "pagoEm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recebidoPor",
+            "columnName": "recebidoPor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valorRecebidoCentavos",
+            "columnName": "valorRecebidoCentavos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "trocoCentavos",
+            "columnName": "trocoCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caixaId",
+            "columnName": "caixaId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "estornadoEm",
+            "columnName": "estornadoEm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "estornadoPor",
+            "columnName": "estornadoPor",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pagamentos_comandaId",
+            "unique": false,
+            "columnNames": [
+              "comandaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pagamentos_comandaId` ON `${TABLE_NAME}` (`comandaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "comandas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "comandaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "caixas",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `abertoEm` INTEGER NOT NULL, `abertoPor` TEXT NOT NULL, `valorInicialCentavos` INTEGER NOT NULL, `fechadoEm` INTEGER, `fechadoPor` TEXT, `valorContadoCentavos` INTEGER, `versao` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "abertoEm",
+            "columnName": "abertoEm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "abertoPor",
+            "columnName": "abertoPor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valorInicialCentavos",
+            "columnName": "valorInicialCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fechadoEm",
+            "columnName": "fechadoEm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fechadoPor",
+            "columnName": "fechadoPor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "valorContadoCentavos",
+            "columnName": "valorContadoCentavos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "versao",
+            "columnName": "versao",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "movimentos_caixa",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `caixaId` INTEGER NOT NULL, `posicao` INTEGER NOT NULL, `tipo` TEXT NOT NULL, `valorCentavos` INTEGER NOT NULL, `motivo` TEXT NOT NULL, `em` INTEGER NOT NULL, `por` TEXT NOT NULL, `forma` TEXT, FOREIGN KEY(`caixaId`) REFERENCES `caixas`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caixaId",
+            "columnName": "caixaId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "posicao",
+            "columnName": "posicao",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tipo",
+            "columnName": "tipo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valorCentavos",
+            "columnName": "valorCentavos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "motivo",
+            "columnName": "motivo",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "em",
+            "columnName": "em",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "por",
+            "columnName": "por",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "forma",
+            "columnName": "forma",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_movimentos_caixa_caixaId",
+            "unique": false,
+            "columnNames": [
+              "caixaId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_movimentos_caixa_caixaId` ON `${TABLE_NAME}` (`caixaId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "caixas",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "caixaId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ee028ef97ebb173241fa96ecfb87e5ea')"
+    ]
+  }
+}

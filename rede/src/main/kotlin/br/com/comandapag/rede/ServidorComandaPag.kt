@@ -1,5 +1,9 @@
 package br.com.comandapag.rede
 
+import br.com.comandapag.core.fiscal.AmbienteFiscal
+import br.com.comandapag.core.fiscal.EmissorNfce
+import br.com.comandapag.core.fiscal.NotaJaEmitidaException
+import br.com.comandapag.core.fiscal.StatusEmissor
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
 import br.com.comandapag.core.modelo.Produto
@@ -44,6 +48,8 @@ class ServidorComandaPag(
     private val pareamento: Pareamento,
     val porta: Int = Protocolo.PORTA_PADRAO,
     private val nome: String = "ComandaPag",
+    /** Emissor de NFC-e deste aparelho; os terminais emitem por ele. */
+    private val emissorNfce: () -> EmissorNfce? = { null },
 ) {
     /** Aumenta a cada gravação (vinda da rede ou do próprio servidor, via [notificarMudanca]). */
     private val mudancas = AtomicLong(0)
@@ -107,6 +113,30 @@ class ServidorComandaPag(
             protegido(HttpMethod.Get, "/caixas/{id}") { responderOu404(caixas.buscar(id())) }
             protegido(HttpMethod.Get, "/caixas/{id}/pagamentos") { call.respond(comandas.pagamentosDoCaixa(id())) }
             protegido(HttpMethod.Post, "/caixas") { gravou(caixas.salvar(call.receive<Caixa>())) }
+
+            // NFC-e: emitida aqui, com o token da Focus que só o servidor conhece
+            protegido(HttpMethod.Get, "/fiscal/status") {
+                call.respond(emissorNfce()?.status() ?: StatusEmissor(ativo = false, ambiente = AmbienteFiscal.SIMULADO))
+            }
+            protegido(HttpMethod.Post, "/fiscal/emitir") {
+                val pedido = call.receive<PedidoEmissao>()
+                val emissor = emissorNfce() ?: throw RegraDeNegocioException("A NFC-e não está configurada no servidor.")
+                val r = try {
+                    RespostaEmissaoServidor(resposta = emissor.emitir(pedido.ref, pedido.nota))
+                } catch (_: NotaJaEmitidaException) {
+                    RespostaEmissaoServidor(jaEmitida = true)
+                }
+                call.respond(r)
+            }
+            protegido(HttpMethod.Get, "/fiscal/consultar") {
+                val emissor = emissorNfce() ?: throw RegraDeNegocioException("A NFC-e não está configurada no servidor.")
+                responderOu404(emissor.consultar(call.request.queryParameters["ref"].orEmpty()))
+            }
+            protegido(HttpMethod.Post, "/fiscal/cancelar") {
+                val pedido = call.receive<PedidoCancelamento>()
+                val emissor = emissorNfce() ?: throw RegraDeNegocioException("A NFC-e não está configurada no servidor.")
+                call.respond(emissor.cancelar(pedido.ref, pedido.justificativa))
+            }
         }
     }
 

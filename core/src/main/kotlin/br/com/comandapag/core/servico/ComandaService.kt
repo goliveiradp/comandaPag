@@ -340,6 +340,9 @@ class ComandaService(
         if (comanda.status == StatusComanda.CANCELADA) erro("A comanda foi cancelada.")
         val pagamento = comanda.pagamentos.getOrNull(indicePagamento) ?: erro("Pagamento não encontrado.")
         if (pagamento.estornado) erro("Esse pagamento já foi estornado.")
+        if (comanda.nfce?.autorizada == true) {
+            erro("Esta comanda tem NFC-e autorizada. Cancele a nota antes de estornar (até 30 minutos depois da emissão).")
+        }
         val caixa = caixas.buscarAberto() ?: erro("Abra o caixa para fazer estornos.")
 
         if (pagamento.forma.naMaquininha) {

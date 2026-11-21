@@ -70,6 +70,17 @@ interface Impressora {
      */
     suspend fun imprimir(linhas: List<String>, colunas: Int = COLUNAS_PADRAO): ResultadoOperacao
 
+    /**
+     * Imprime [antes], um QR Code com [qrCode] e depois [depois] (usado no DANFE NFC-e).
+     * Impressoras que não desenham QR Code imprimem o endereço por extenso.
+     */
+    suspend fun imprimirComQrCode(
+        antes: List<String>,
+        qrCode: String,
+        depois: List<String>,
+        colunas: Int = COLUNAS_PADRAO,
+    ): ResultadoOperacao = imprimir(antes + qrCode.chunked(colunas) + depois, colunas)
+
     companion object {
         const val COLUNAS_PADRAO = 32
     }

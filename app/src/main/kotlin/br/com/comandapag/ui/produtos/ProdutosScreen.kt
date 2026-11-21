@@ -37,6 +37,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import br.com.comandapag.Dependencias
+import br.com.comandapag.core.modelo.DadosFiscais
 import br.com.comandapag.core.modelo.Dinheiro
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.SetorProducao
@@ -118,6 +119,7 @@ private fun DialogoProduto(
     }
     var categoria by remember { mutableStateOf(produto.categoria) }
     var setor by remember { mutableStateOf(produto.setor) }
+    var fiscal by remember { mutableStateOf(produto.fiscal) }
     val precoCentavos = Dinheiro.parse(preco)
     val valido = nome.isNotBlank() && precoCentavos != null && precoCentavos > 0
 
@@ -153,6 +155,7 @@ private fun DialogoProduto(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                CamposFiscais(fiscal) { fiscal = it }
                 Text("Preparo (ticket do pedido)", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SetorProducao.entries.forEach { s ->
@@ -166,7 +169,13 @@ private fun DialogoProduto(
                 enabled = valido,
                 onClick = {
                     aoSalvar(
-                        produto.copy(nome = nome.trim(), precoCentavos = precoCentavos!!, categoria = categoria.trim(), setor = setor),
+                        produto.copy(
+                            nome = nome.trim(),
+                            precoCentavos = precoCentavos!!,
+                            categoria = categoria.trim(),
+                            setor = setor,
+                            fiscal = fiscal,
+                        ),
                     )
                 },
             ) { Text("Salvar") }
@@ -178,5 +187,67 @@ private fun DialogoProduto(
                 TextButton(onClick = aoCancelar) { Text("Cancelar") }
             }
         },
+    )
+}
+
+/** Dados para a NFC-e (o contador informa NCM, CFOP e CSOSN de cada produto). */
+@Composable
+private fun CamposFiscais(fiscal: DadosFiscais, aoMudar: (DadosFiscais) -> Unit) {
+    var aberto by remember { mutableStateOf(false) }
+    TextButton(onClick = { aberto = !aberto }, contentPadding = PaddingValues(0.dp)) {
+        Text(
+            if (aberto) "Ocultar dados da nota fiscal" else "Dados da nota fiscal (NFC-e)" + if (fiscal.completos) "" else " · falta NCM",
+        )
+    }
+    if (!aberto) return
+    OutlinedTextField(
+        value = fiscal.ncm,
+        onValueChange = { aoMudar(fiscal.copy(ncm = it.filter(Char::isDigit).take(8))) },
+        label = { Text("NCM (8 dígitos)") },
+        isError = fiscal.ncm.isNotEmpty() && fiscal.ncm.length != 8,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = fiscal.cfop,
+            onValueChange = { aoMudar(fiscal.copy(cfop = it.filter(Char::isDigit).take(4))) },
+            label = { Text("CFOP") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = fiscal.icmsSituacao,
+            onValueChange = { aoMudar(fiscal.copy(icmsSituacao = it.filter(Char::isDigit).take(3))) },
+            label = { Text("CSOSN") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = fiscal.unidade,
+            onValueChange = { aoMudar(fiscal.copy(unidade = it.uppercase().take(6))) },
+            label = { Text("Unidade") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = fiscal.pisCofinsSituacao,
+            onValueChange = { aoMudar(fiscal.copy(pisCofinsSituacao = it.filter(Char::isDigit).take(2))) },
+            label = { Text("CST PIS/COFINS") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Text(
+        "Simples Nacional: refeições costumam usar CFOP 5102 / CSOSN 102; bebidas com substituição " +
+            "tributária, CFOP 5405 / CSOSN 500. Confirme com o contador.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

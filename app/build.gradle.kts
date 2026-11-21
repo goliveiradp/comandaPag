@@ -76,6 +76,8 @@ kotlin {
 dependencies {
     implementation(project(":core"))
     implementation(project(":rede"))
+    // QR Code do DANFE NFC-e
+    implementation("com.google.zxing:core:3.5.3")
 
     // PagBank PlugPag: só no flavor que roda na maquininha
     "smartImplementation"("br.com.uol.pagseguro.plugpagservice.wrapper:wrapper:1.35.0")

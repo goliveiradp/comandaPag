@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaixaEntity::class,
         MovimentoCaixaEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class BancoDeDados : RoomDatabase() {
@@ -135,7 +135,21 @@ abstract class BancoDeDados : RoomDatabase() {
             }
         }
 
-        val MIGRACOES = arrayOf(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5, MIGRACAO_5_6)
+        /** v7: dados fiscais dos produtos e NFC-e das comandas. */
+        val MIGRACAO_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "ncm" to "''", "cfop" to "'5102'", "icmsSituacao" to "'102'",
+                    "origem" to "'0'", "unidade" to "'UN'", "pisCofinsSituacao" to "'49'",
+                ).forEach { (coluna, padrao) ->
+                    db.execSQL("ALTER TABLE `produtos` ADD COLUMN `$coluna` TEXT NOT NULL DEFAULT $padrao")
+                }
+                db.execSQL("ALTER TABLE `comandas` ADD COLUMN `nfce` TEXT")
+                db.execSQL("ALTER TABLE `comandas` ADD COLUMN `tentativasNfce` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRACOES = arrayOf(MIGRACAO_1_2, MIGRACAO_2_3, MIGRACAO_3_4, MIGRACAO_4_5, MIGRACAO_5_6, MIGRACAO_6_7)
 
         fun criar(context: Context): BancoDeDados =
             Room.databaseBuilder(context, BancoDeDados::class.java, NOME)

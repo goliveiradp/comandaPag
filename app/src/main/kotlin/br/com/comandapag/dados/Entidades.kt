@@ -9,9 +9,11 @@ import androidx.room.PrimaryKey
 import androidx.room.Relation
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.DadosFiscais
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.MovimentoCaixa
+import br.com.comandapag.core.modelo.NotaFiscalConsumidor
 import br.com.comandapag.core.modelo.Pagamento
 import br.com.comandapag.core.modelo.Permissao
 import br.com.comandapag.core.modelo.Produto
@@ -29,11 +31,24 @@ data class ProdutoEntity(
     val ativo: Boolean,
     // Versão 5 do banco
     @ColumnInfo(defaultValue = "COZINHA") val setor: String = SetorProducao.COZINHA.name,
+    // Versão 7: dados fiscais para a NFC-e
+    @ColumnInfo(defaultValue = "") val ncm: String = "",
+    @ColumnInfo(defaultValue = "5102") val cfop: String = "5102",
+    @ColumnInfo(defaultValue = "102") val icmsSituacao: String = "102",
+    @ColumnInfo(defaultValue = "0") val origem: String = "0",
+    @ColumnInfo(defaultValue = "UN") val unidade: String = "UN",
+    @ColumnInfo(defaultValue = "49") val pisCofinsSituacao: String = "49",
 ) {
-    fun paraModelo() = Produto(id, nome, precoCentavos, categoria, ativo, setorDe(setor))
+    fun paraModelo() = Produto(
+        id, nome, precoCentavos, categoria, ativo, setorDe(setor),
+        DadosFiscais(ncm, cfop, icmsSituacao, origem, unidade, pisCofinsSituacao),
+    )
 
     companion object {
-        fun de(p: Produto) = ProdutoEntity(p.id, p.nome, p.precoCentavos, p.categoria, p.ativo, p.setor.name)
+        fun de(p: Produto) = ProdutoEntity(
+            p.id, p.nome, p.precoCentavos, p.categoria, p.ativo, p.setor.name,
+            p.fiscal.ncm, p.fiscal.cfop, p.fiscal.icmsSituacao, p.fiscal.origem, p.fiscal.unidade, p.fiscal.pisCofinsSituacao,
+        )
     }
 }
 
@@ -64,6 +79,9 @@ data class ComandaEntity(
     @ColumnInfo(defaultValue = "0") val pedidosEnviados: Int = 0,
     // Versão 6: controle de gravação entre aparelhos
     @ColumnInfo(defaultValue = "0") val versao: Long = 0,
+    // Versão 7: NFC-e (JSON) e número de tentativas
+    val nfce: String? = null,
+    @ColumnInfo(defaultValue = "0") val tentativasNfce: Int = 0,
 )
 
 @Entity(
@@ -269,6 +287,8 @@ data class ComandaComItens(
             fechadaPor = c.fechadaPor,
             pedidosEnviados = c.pedidosEnviados,
             versao = c.versao,
+            nfce = c.nfce?.let { runCatching { json.decodeFromString(NotaFiscalConsumidor.serializer(), it) }.getOrNull() },
+            tentativasNfce = c.tentativasNfce,
         )
     }
 }
@@ -285,7 +305,11 @@ fun Comanda.paraEntidade() = ComandaEntity(
     fechadaPor = fechadaPor,
     pedidosEnviados = pedidosEnviados,
     versao = versao,
+    nfce = nfce?.let { json.encodeToString(NotaFiscalConsumidor.serializer(), it) },
+    tentativasNfce = tentativasNfce,
 )
+
+private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 @Entity(tableName = "usuarios")
 data class UsuarioEntity(

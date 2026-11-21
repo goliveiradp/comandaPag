@@ -4,13 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.comandapag.Dependencias
 import br.com.comandapag.core.impressao.ExtratoComanda
+import br.com.comandapag.core.fiscal.DanfeNfce
+import br.com.comandapag.core.fiscal.Emitente
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.NotaFiscalConsumidor
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.Produto
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.core.pagamento.ResultadoOperacao
 import br.com.comandapag.core.pagamento.ResultadoPagamento
 import br.com.comandapag.core.servico.RegraDeNegocioException
+import br.com.comandapag.ui.fiscal.EstadoNfce
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -49,6 +53,63 @@ class ComandaViewModel(private val comandaId: Long, private val deps: Dependenci
 
     val caixaAberto: StateFlow<Boolean> = deps.caixas.observarAberto().map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    /** Se a NFC-e está configurada (aqui ou no servidor). */
+    val nfceAtiva = MutableStateFlow(false)
+    val estadoNfce = MutableStateFlow<EstadoNfce>(EstadoNfce.Inativo)
+    private var emitente: Emitente? = null
+
+    init {
+        viewModelScope.launch {
+            runCatching { deps.nfceService.status() }.getOrNull()?.let {
+                nfceAtiva.value = it.ativo
+                emitente = it.emitente
+            }
+        }
+    }
+
+    fun pedirNfce() {
+        estadoNfce.value = EstadoNfce.PedindoCpf
+    }
+
+    fun fecharNfce() {
+        estadoNfce.value = EstadoNfce.Inativo
+    }
+
+    /** Emite a NFC-e e imprime o DANFE com QR Code. */
+    fun emitirNfce(cpf: String?, operador: Usuario) {
+        estadoNfce.value = EstadoNfce.Emitindo
+        viewModelScope.launch {
+            estadoNfce.value = try {
+                val r = deps.nfceService.emitir(comandaId, operador, cpf)
+                r.emitente?.let { emitente = it }
+                aviso.value = "NFC-e nº ${r.nota.numero} autorizada" + imprimirDanfe(r.comanda, r.nota)
+                EstadoNfce.Inativo
+            } catch (e: RegraDeNegocioException) {
+                EstadoNfce.Erro(e.message ?: "Erro ao emitir a NFC-e")
+            }
+        }
+    }
+
+    fun reimprimirNfce() {
+        val c = comanda.value ?: return
+        val n = c.nfce ?: return
+        viewModelScope.launch { aviso.value = "DANFE reimpresso" + imprimirDanfe(c, n) }
+    }
+
+    fun cancelarNfce(operador: Usuario) = executar {
+        deps.nfceService.cancelar(comandaId, operador)
+        aviso.value = "NFC-e cancelada"
+    }
+
+    /** Retorna "" se imprimiu, ou o motivo da falha (para juntar ao aviso). */
+    private suspend fun imprimirDanfe(c: Comanda, n: NotaFiscalConsumidor): String {
+        val danfe = DanfeNfce.gerar(c, n, emitente)
+        val impressora = deps.maquininha.impressora
+        val r = danfe.qrCode?.let { impressora.imprimirComQrCode(danfe.antes, it, danfe.depois) }
+            ?: impressora.imprimir(danfe.antes + danfe.depois)
+        return (r as? ResultadoOperacao.Falha)?.let { ". Erro ao imprimir: ${it.mensagem}" } ?: ""
+    }
 
     /** Em quantas pessoas a conta ainda vai ser dividida (1 = sem divisão). Diminui a cada pagamento. */
     val pessoasRestantes = MutableStateFlow(1)

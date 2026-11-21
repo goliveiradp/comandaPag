@@ -16,6 +16,8 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
 
 ![Rede e impressoras](docs/rede.png)
 
+![Nota fiscal (NFC-e)](docs/nfce.png)
+
 *Capturas geradas pelo teste de interface com a maquininha simulada.*
 
 ## Funcionalidades
@@ -60,6 +62,21 @@ biblioteca oficial [PlugPagServiceWrapper](https://github.com/pagseguro/pagsegur
   - O servidor roda com uma notificação fixa para continuar ativo com a tela apagada.
 - **Impressoras de rede**: a cozinha e o bar podem imprimir numa impressora térmica
   de rede ESC/POS (porta 9100) em vez da maquininha, com botão de teste.
+- **Nota fiscal (NFC-e)** pela [Focus NFe](https://focusnfe.com.br) (Ajustes > Nota fiscal):
+  - Ambientes: **Simulado** (testa o fluxo sem conta), **Homologação** (testes na Sefaz)
+    e **Produção**. Token, CNPJ, razão social, IE e endereço ficam só na maquininha
+    que emite; na rede local, os terminais emitem pelo servidor.
+  - Cada produto tem NCM, CFOP, CSOSN, unidade e CST de PIS/COFINS (padrões para o
+    Simples Nacional: CFOP 5102 / CSOSN 102; bebidas com ST: 5405 / 500 — confirme com
+    o contador).
+  - Depois de quitar a comanda: "Emitir NFC-e" → CPF na nota (opcional) → emissão
+    síncrona → DANFE NFC-e impresso com QR Code. Reimprimir e cancelar (até 30 min).
+  - A taxa de serviço vai rateada nos itens como "outras despesas"; pagamentos com
+    os códigos da NFC-e (01 dinheiro com troco, 03 crédito, 04 débito, 17 PIX) e
+    "pagamento não integrado" (maquininha POS).
+  - Se a resposta da emissão se perder, a mesma referência é consultada em vez de
+    emitir outra nota; contingência offline (Sefaz fora do ar) é feita pela Focus.
+  - Comanda com NFC-e autorizada só pode ser estornada depois de cancelar a nota.
 - **Impressão**: extrato da comanda na impressora térmica da Smart 2.
 - **Histórico**: comandas pagas/canceladas e resumo das vendas do dia por forma de pagamento.
 - **Garçom responsável**: cada comanda guarda quem abriu e quem fechou (cobrou ou
@@ -135,6 +152,17 @@ Requisitos: Android Studio (ou JDK 17+ e Android SDK 35).
 ```
 
 Os APKs ficam em `app/build/outputs/apk/<flavor>/debug/`.
+
+## Para emitir NFC-e de verdade (Maranhão)
+
+1. Certificado digital **A1** do CNPJ e **credenciamento de NFC-e na SEFAZ-MA**
+   (normalmente feito pelo contador), que gera o **CSC (token)**.
+2. Conta na **Focus NFe**: cadastre a empresa, envie o certificado A1 e o CSC no
+   painel e copie os tokens de homologação e produção.
+3. No app (maquininha servidor ou independente): Ajustes > Nota fiscal >
+   **Homologação**, preencha CNPJ, razão social, IE, endereço e token. Emita algumas
+   notas de teste.
+4. Com o contador, confira NCM/CFOP/CSOSN de cada produto e passe para **Produção**.
 
 ## Instalando na Smart 2
 

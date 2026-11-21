@@ -4,6 +4,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import br.com.comandapag.core.modelo.Caixa
 import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.modelo.DadosFiscais
+import br.com.comandapag.core.modelo.NotaFiscalConsumidor
+import br.com.comandapag.core.modelo.StatusNfce
 import br.com.comandapag.core.modelo.FormaPagamento
 import br.com.comandapag.core.modelo.ItemComanda
 import br.com.comandapag.core.modelo.MovimentoCaixa
@@ -126,6 +129,22 @@ class RepositorioRoomTest {
         caixas.salvar(caixa.copy(valorInicialCentavos = 100))
         assertThrows(ConflitoDeVersaoException::class.java) { runBlocking { caixas.salvar(caixa.copy(valorInicialCentavos = 200)) } }
         assertEquals(100L, caixas.buscar(caixaId)!!.valorInicialCentavos)
+    }
+
+    @Test
+    fun guardaDadosFiscaisENfce() = runBlocking {
+        val fiscal = DadosFiscais(ncm = "22030000", cfop = "5405", icmsSituacao = "500", unidade = "LT")
+        val pid = produtos.salvar(Produto(nome = "Cerveja", precoCentavos = 1200, fiscal = fiscal))
+        assertEquals(fiscal, produtos.buscar(pid)!!.fiscal)
+
+        val nota = NotaFiscalConsumidor(
+            ref = "cmd1", status = StatusNfce.AUTORIZADA, ambiente = "HOMOLOGACAO", emitidaEm = 5,
+            numero = "12", serie = "1", chave = "2".repeat(44), qrCodeUrl = "http://qr", cpf = "52998224725",
+        )
+        val id = comandas.salvar(Comanda(identificacao = "Mesa 1", abertaEm = 1, nfce = nota, tentativasNfce = 2))
+        val lida = comandas.buscar(id)!!
+        assertEquals(nota, lida.nfce)
+        assertEquals(2, lida.tentativasNfce)
     }
 
     @Test

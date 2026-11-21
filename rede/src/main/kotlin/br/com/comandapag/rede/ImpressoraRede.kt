@@ -19,13 +19,23 @@ class ImpressoraRede(
     private val tempoLimiteMs: Int = 4_000,
 ) : Impressora {
 
-    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao = withContext(Dispatchers.IO) {
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao =
+        enviar(escPos(linhas, letraGrande = colunas <= 24))
+
+    override suspend fun imprimirComQrCode(
+        antes: List<String>,
+        qrCode: String,
+        depois: List<String>,
+        colunas: Int,
+    ): ResultadoOperacao = enviar(escPosComQrCode(antes, qrCode, depois))
+
+    private suspend fun enviar(bytes: ByteArray): ResultadoOperacao = withContext(Dispatchers.IO) {
         try {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(host, porta), tempoLimiteMs)
                 socket.soTimeout = tempoLimiteMs
                 socket.getOutputStream().apply {
-                    write(escPos(linhas, letraGrande = colunas <= 24))
+                    write(bytes)
                     flush()
                 }
             }
@@ -54,6 +64,37 @@ class ImpressoraRede(
             linhas.forEach { saida.write((semAcentos(it) + "\n").toByteArray(Charsets.US_ASCII)) }
             saida.write(LETRA_NORMAL)
             saida.write(AVANCAR_E_CORTAR)
+            return saida.toByteArray()
+        }
+
+        /** Texto, QR Code nativo da impressora (GS ( k, modelo 2) centralizado e texto depois. */
+        fun escPosComQrCode(antes: List<String>, qrCode: String, depois: List<String>): ByteArray {
+            val saida = ByteArrayOutputStream()
+            saida.write(INICIAR)
+            saida.write(LETRA_NORMAL)
+            antes.forEach { saida.write((semAcentos(it) + "\n").toByteArray(Charsets.US_ASCII)) }
+            saida.write(byteArrayOf(0x1B, 0x61, 0x01)) // centralizar
+            saida.write(qrCodeEscPos(qrCode))
+            saida.write("\n".toByteArray())
+            saida.write(byteArrayOf(0x1B, 0x61, 0x00)) // alinhar à esquerda
+            depois.forEach { saida.write((semAcentos(it) + "\n").toByteArray(Charsets.US_ASCII)) }
+            saida.write(AVANCAR_E_CORTAR)
+            return saida.toByteArray()
+        }
+
+        /** Comandos ESC/POS para imprimir um QR Code (modelo 2, módulo 5, correção M). */
+        fun qrCodeEscPos(conteudo: String): ByteArray {
+            val dados = conteudo.toByteArray(Charsets.US_ASCII)
+            val tamanho = dados.size + 3
+            val pL = (tamanho % 256).toByte()
+            val pH = (tamanho / 256).toByte()
+            val saida = ByteArrayOutputStream()
+            saida.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00)) // modelo 2
+            saida.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x05)) // tamanho do módulo
+            saida.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31)) // correção de erro M
+            saida.write(byteArrayOf(0x1D, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30)) // guardar os dados
+            saida.write(dados)
+            saida.write(byteArrayOf(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30)) // imprimir
             return saida.toByteArray()
         }
 

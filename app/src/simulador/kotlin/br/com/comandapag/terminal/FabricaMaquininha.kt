@@ -65,6 +65,9 @@ class ImpressoraSimulada : Impressora {
         return ResultadoOperacao.Sucesso
     }
 
+    override suspend fun imprimirComQrCode(antes: List<String>, qrCode: String, depois: List<String>, colunas: Int): ResultadoOperacao =
+        imprimir(antes + "[QR CODE: $qrCode]" + depois, colunas)
+
     companion object {
         /** Tudo o que foi "impresso" (útil para conferir nos testes). */
         val historico: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())

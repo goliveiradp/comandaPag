@@ -61,6 +61,8 @@ import br.com.comandapag.core.modelo.StatusComanda
 import br.com.comandapag.core.modelo.Usuario
 import br.com.comandapag.ui.MensagemVazia
 import br.com.comandapag.ui.acesso.rememberAutorizador
+import br.com.comandapag.ui.fiscal.BlocoNfce
+import br.com.comandapag.ui.fiscal.DialogosNfce
 import br.com.comandapag.ui.dependencias
 import br.com.comandapag.ui.viewModelCom
 
@@ -74,6 +76,9 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
     val pessoas by vm.pessoasRestantes.collectAsStateWithLifecycle()
     val caixaAberto by vm.caixaAberto.collectAsStateWithLifecycle()
     val envioAutomatico by vm.envioAutomatico.collectAsStateWithLifecycle()
+    val nfceAtiva by vm.nfceAtiva.collectAsStateWithLifecycle()
+    val estadoNfce by vm.estadoNfce.collectAsStateWithLifecycle()
+    var confirmarCancelarNfce by remember { mutableStateOf(false) }
     var estornando by remember { mutableStateOf<Int?>(null) }
     val usuario by dependencias().sessao.usuario.collectAsStateWithLifecycle()
     val autorizador = rememberAutorizador()
@@ -160,6 +165,15 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
                         aoAdicionar = { mostrarProdutos = true },
                         aoEstornar = { estornando = it },
                         aoEnviarPedido = { usuario?.let { vm.enviarPedido(it) } },
+                        nfce = {
+                            BlocoNfce(
+                                comanda = c,
+                                nfceAtiva = nfceAtiva,
+                                aoEmitir = vm::pedirNfce,
+                                aoReimprimir = vm::reimprimirNfce,
+                                aoCancelar = { confirmarCancelarNfce = true },
+                            )
+                        },
                         aoCobrar = { autorizador.exigir(Permissao.COBRAR) { cobrador = it } },
                     )
                 }
@@ -218,6 +232,11 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
         estado = cobranca,
         aoCancelarOperacao = vm::cancelarCobranca,
         aoImprimirExtrato = vm::imprimirExtrato,
+        nfceAtiva = nfceAtiva,
+        aoEmitirNfce = {
+            vm.fecharResultadoCobranca()
+            vm.pedirNfce()
+        },
         aoProximoPagamento = {
             vm.fecharResultadoCobranca()
             autorizador.exigir(Permissao.COBRAR) { cobrador = it }
@@ -228,6 +247,27 @@ fun ComandaScreen(comandaId: Long, aoVoltar: () -> Unit) {
             if (quitada) aoVoltar()
         },
     )
+
+    DialogosNfce(
+        estado = estadoNfce,
+        aoEmitir = { cpf -> usuario?.let { vm.emitirNfce(cpf, it) } },
+        aoTentarDeNovo = vm::pedirNfce,
+        aoFechar = vm::fecharNfce,
+    )
+    if (confirmarCancelarNfce) {
+        AlertDialog(
+            onDismissRequest = { confirmarCancelarNfce = false },
+            title = { Text("Cancelar a NFC-e?") },
+            text = { Text("A nota será cancelada na Sefaz (permitido até 30 minutos depois da emissão). Depois disso dá para estornar os pagamentos.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmarCancelarNfce = false
+                    autorizador.exigir(Permissao.ESTORNAR) { vm.cancelarNfce(it) }
+                }) { Text("Cancelar NFC-e") }
+            },
+            dismissButton = { TextButton(onClick = { confirmarCancelarNfce = false }) { Text("Voltar") } },
+        )
+    }
 
     val indiceEstorno = estornando
     val pagamentoEstorno = indiceEstorno?.let { c?.pagamentos?.getOrNull(it) }
@@ -322,6 +362,7 @@ private fun Resumo(
     aoEstornar: (Int) -> Unit,
     aoEnviarPedido: () -> Unit,
     aoCobrar: () -> Unit,
+    nfce: @Composable () -> Unit = {},
 ) {
     Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
@@ -383,6 +424,7 @@ private fun Resumo(
                     )
                 }
             }
+            nfce()
             if (comanda.estaAberta && comanda.quantidadePendente > 0) {
                 FilledTonalButton(onClick = aoEnviarPedido, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Icon(Icons.Filled.Restaurant, contentDescription = null)

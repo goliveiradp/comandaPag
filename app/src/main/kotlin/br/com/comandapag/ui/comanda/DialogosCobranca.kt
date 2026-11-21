@@ -233,6 +233,8 @@ fun DialogoEstadoCobranca(
     estado: EstadoCobranca,
     aoCancelarOperacao: () -> Unit,
     aoImprimirExtrato: () -> Unit,
+    nfceAtiva: Boolean = false,
+    aoEmitirNfce: () -> Unit = {},
     aoProximoPagamento: () -> Unit,
     aoFechar: () -> Unit,
 ) {
@@ -279,17 +281,17 @@ fun DialogoEstadoCobranca(
                 }
             },
             confirmButton = {
-                if (estado.quitada) {
-                    TextButton(onClick = aoFechar) { Text("Concluir") }
-                } else {
-                    TextButton(onClick = aoProximoPagamento) { Text("Próximo pagamento") }
+                when {
+                    estado.quitada && nfceAtiva -> TextButton(onClick = aoEmitirNfce) { Text("Emitir NFC-e") }
+                    estado.quitada -> TextButton(onClick = aoFechar) { Text("Concluir") }
+                    else -> TextButton(onClick = aoProximoPagamento) { Text("Próximo pagamento") }
                 }
             },
             dismissButton = {
-                if (estado.quitada) {
-                    TextButton(onClick = aoImprimirExtrato) { Text("Imprimir extrato") }
-                } else {
-                    TextButton(onClick = aoFechar) { Text("Depois") }
+                when {
+                    estado.quitada && nfceAtiva -> TextButton(onClick = aoFechar) { Text("Sem nota") }
+                    estado.quitada -> TextButton(onClick = aoImprimirExtrato) { Text("Imprimir extrato") }
+                    else -> TextButton(onClick = aoFechar) { Text("Depois") }
                 }
             },
         )

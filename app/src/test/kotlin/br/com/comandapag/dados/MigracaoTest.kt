@@ -170,6 +170,27 @@ class MigracaoTest {
         }
     }
 
+    @Test
+    fun migracao6Para7AdicionaDadosFiscais() {
+        val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BancoDeDados::class.java)
+        val nome = "migracao-6-7.db"
+        helper.createDatabase(nome, 6).use { db ->
+            db.execSQL("INSERT INTO produtos (id, nome, precoCentavos, categoria, ativo) VALUES (1, 'Prato', 2500, '', 1)")
+            db.execSQL("INSERT INTO comandas (id, identificacao, abertaEm, status, taxaServico) VALUES (1, 'Mesa 1', 1, 'PAGA', 0)")
+        }
+        helper.runMigrationsAndValidate(nome, 7, true, BancoDeDados.MIGRACAO_6_7).use { db ->
+            db.query("SELECT ncm, cfop, icmsSituacao, unidade, pisCofinsSituacao FROM produtos").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(listOf("", "5102", "102", "UN", "49"), (0..4).map { c.getString(it) })
+            }
+            db.query("SELECT nfce, tentativasNfce FROM comandas").use { c ->
+                assertTrue(c.moveToFirst())
+                assertTrue(c.isNull(0))
+                assertEquals(0, c.getInt(1))
+            }
+        }
+    }
+
     private companion object {
         val NOVAS = setOf(Permissao.ESTORNAR, Permissao.OPERAR_CAIXA)
 

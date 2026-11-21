@@ -37,6 +37,33 @@ object RenderizadorCupom {
         return bitmap
     }
 
+    /** Texto, QR Code centralizado (ex.: DANFE NFC-e) e mais texto, numa imagem só. */
+    fun renderizarComQrCode(antes: List<String>, qrCode: String, depois: List<String>, colunas: Int = ExtratoComanda.COLUNAS): Bitmap {
+        val cima = renderizar(antes, colunas)
+        val baixo = renderizar(depois, colunas)
+        val lado = LARGURA_PX * 2 / 3
+        val matriz = com.google.zxing.qrcode.QRCodeWriter().encode(
+            qrCode,
+            com.google.zxing.BarcodeFormat.QR_CODE,
+            lado,
+            lado,
+            mapOf(com.google.zxing.EncodeHintType.MARGIN to 1),
+        )
+        val resultado = Bitmap.createBitmap(LARGURA_PX, cima.height + lado + baixo.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(resultado)
+        canvas.drawColor(Color.WHITE)
+        canvas.drawBitmap(cima, 0f, 0f, null)
+        val preto = Paint().apply { color = Color.BLACK }
+        val x0 = (LARGURA_PX - lado) / 2
+        for (y in 0 until matriz.height) {
+            for (x in 0 until matriz.width) {
+                if (matriz[x, y]) canvas.drawPoint((x0 + x).toFloat(), (cima.height + y).toFloat(), preto)
+            }
+        }
+        canvas.drawBitmap(baixo, 0f, (cima.height + lado).toFloat(), null)
+        return resultado
+    }
+
     fun salvarPng(bitmap: Bitmap, arquivo: File): File {
         FileOutputStream(arquivo).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         return arquivo

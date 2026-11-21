@@ -66,6 +66,7 @@ fun HistoricoScreen(modifier: Modifier = Modifier, aoAbrirComanda: (Long) -> Uni
                                 if (cancelada) "Cancelada" else c.pagamentos.filter { !it.estornado }.map { it.forma.descricao }.distinct().joinToString(" + "),
                         )
                         if (c.garcomNome.isNotBlank()) Text("Garçom: ${c.garcomNome}")
+                        c.nfce?.takeIf { it.autorizada }?.let { Text("NFC-e nº ${it.numero}") }
                     }
                 },
                 trailingContent = {

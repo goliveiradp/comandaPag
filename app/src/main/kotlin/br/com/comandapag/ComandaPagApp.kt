@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.Build
 import br.com.comandapag.core.modelo.SetorProducao
 import br.com.comandapag.core.pagamento.Impressora
+import br.com.comandapag.core.fiscal.EmissorNfce
+import br.com.comandapag.core.fiscal.NfceService
 import br.com.comandapag.core.producao.ImpressorasProducao
 import br.com.comandapag.core.repositorio.CaixaRepository
 import br.com.comandapag.core.repositorio.ComandaRepository
@@ -19,12 +21,15 @@ import br.com.comandapag.dados.ComandaRepositoryRoom
 import br.com.comandapag.dados.Preferencias
 import br.com.comandapag.dados.ProdutoRepositoryRoom
 import br.com.comandapag.dados.UsuarioRepositoryRoom
+import br.com.comandapag.fiscal.ConfiguracaoFiscal
+import br.com.comandapag.fiscal.EmissorLocal
 import br.com.comandapag.rede.CaixaRepositoryNotificando
 import br.com.comandapag.rede.CaixaRepositoryRemoto
 import br.com.comandapag.rede.ClienteComandaPag
 import br.com.comandapag.rede.ComandaRepositoryNotificando
 import br.com.comandapag.rede.ComandaRepositoryRemoto
 import br.com.comandapag.rede.ConfiguracaoRede
+import br.com.comandapag.rede.EmissorNfceRemoto
 import br.com.comandapag.rede.ImpressoraRede
 import br.com.comandapag.rede.ModoRede
 import br.com.comandapag.rede.PagamentosPendentesPreferencias
@@ -78,6 +83,10 @@ class Dependencias(private val app: Application) {
     val maquininha: Maquininha = criarMaquininha(app)
     val pareamento = PareamentoPreferencias(app)
 
+    /** NFC-e: configuração e emissor deste aparelho (no servidor, também atende os terminais). */
+    val fiscal = ConfiguracaoFiscal(app)
+    private val emissorLocal = EmissorLocal(fiscal)
+
     /** Conexão com o servidor (só no modo terminal). */
     val cliente: ClienteComandaPag? =
         if (modo == ModoRede.TERMINAL) {
@@ -116,6 +125,7 @@ class Dependencias(private val app: Application) {
                     produtosLocais, comandasLocais, usuariosLocais, caixasLocais,
                     pareamento = pareamento,
                     nome = preferencias.nomeEstabelecimento.value.ifBlank { Build.MODEL ?: "ComandaPag" },
+                    emissorNfce = { emissorLocal },
                 ).also {
                     runCatching { it.iniciar() }
                     ServicoServidor.iniciar(app)
@@ -157,6 +167,10 @@ class Dependencias(private val app: Application) {
         trava = trava,
     )
     val caixaService = CaixaService(caixas, comandas, trava)
+
+    /** Nos terminais a NFC-e é emitida pelo servidor (só ele tem o token da Focus NFe). */
+    val emissorNfce: EmissorNfce = cliente?.let { EmissorNfceRemoto(it) } ?: emissorLocal
+    val nfceService = NfceService(comandas, produtos, emissorNfce)
     val usuarioService = UsuarioService(usuarios)
     val sessao = Sessao(usuarios, escopo)
 

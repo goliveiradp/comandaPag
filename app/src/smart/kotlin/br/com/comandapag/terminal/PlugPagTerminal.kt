@@ -109,12 +109,19 @@ class PlugPagTerminal(private val context: Context) : TerminalPagamento, Impress
         withContext(Dispatchers.IO) { runCatching { plugPag.abort() } }
     }
 
-    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao = withContext(Dispatchers.IO) {
+    override suspend fun imprimir(linhas: List<String>, colunas: Int): ResultadoOperacao =
+        imprimirImagem { RenderizadorCupom.renderizar(linhas, colunas) }
+
+    override suspend fun imprimirComQrCode(
+        antes: List<String>,
+        qrCode: String,
+        depois: List<String>,
+        colunas: Int,
+    ): ResultadoOperacao = imprimirImagem { RenderizadorCupom.renderizarComQrCode(antes, qrCode, depois, colunas) }
+
+    private suspend fun imprimirImagem(desenhar: () -> android.graphics.Bitmap): ResultadoOperacao = withContext(Dispatchers.IO) {
         runCatching {
-            val arquivo = RenderizadorCupom.salvarPng(
-                RenderizadorCupom.renderizar(linhas, colunas),
-                File(context.cacheDir, "extrato.png"),
-            )
+            val arquivo = RenderizadorCupom.salvarPng(desenhar(), File(context.cacheDir, "extrato.png"))
             val r = plugPag.printFromFile(PlugPagPrinterData(arquivo.absolutePath, QUALIDADE_IMPRESSAO, AVANCO_PAPEL))
             if (r.result == PlugPag.RET_OK) ResultadoOperacao.Sucesso
             else ResultadoOperacao.Falha(r.message ?: "Falha na impressão (código ${r.errorCode})")
