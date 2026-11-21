@@ -1,7 +1,6 @@
 package br.com.comandapag.ui.acesso
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,14 +58,12 @@ fun TecladoPin(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Bolinha cheia = dígito digitado; contorno = posição vazia
-            repeat(Pin.TAMANHO_MAXIMO) { i ->
-                val mod = Modifier.size(14.dp)
-                if (i < pin.length) {
-                    Box(mod.background(MaterialTheme.colorScheme.primary, CircleShape))
-                } else {
-                    Box(mod.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
-                }
+            // Uma bolinha para cada dígito digitado: o tamanho do PIN não fica à mostra
+            if (pin.isEmpty()) {
+                Text("Digite o PIN", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodyMedium)
+            }
+            repeat(pin.length) {
+                Box(Modifier.size(14.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
             }
         }
         Text(
