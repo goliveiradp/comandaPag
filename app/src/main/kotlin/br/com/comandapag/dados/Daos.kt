@@ -1,0 +1,185 @@
+package br.com.comandapag.dados
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
+import br.com.comandapag.core.modelo.Caixa
+import br.com.comandapag.core.modelo.Comanda
+import br.com.comandapag.core.servico.ConflitoDeVersaoException
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ProdutoDao {
+    @Query("SELECT * FROM produtos WHERE ativo = 1 ORDER BY categoria, nome")
+    fun observarAtivos(): Flow<List<ProdutoEntity>>
+
+    @Query("SELECT * FROM produtos WHERE id = :id")
+    suspend fun buscar(id: Long): ProdutoEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun salvar(produto: ProdutoEntity): Long
+
+    @Query("UPDATE produtos SET ativo = 0 WHERE id = :id")
+    suspend fun desativar(id: Long)
+}
+
+@Dao
+abstract class ComandaDao {
+    @Transaction
+    @Query("SELECT * FROM comandas WHERE status = 'ABERTA' ORDER BY abertaEm")
+    abstract fun observarAbertas(): Flow<List<ComandaComItens>>
+
+    @Transaction
+    @Query("SELECT * FROM comandas WHERE status != 'ABERTA' ORDER BY fechadaEm DESC LIMIT 500")
+    abstract fun observarFechadas(): Flow<List<ComandaComItens>>
+
+    @Transaction
+    @Query("SELECT * FROM comandas WHERE id = :id")
+    abstract fun observar(id: Long): Flow<ComandaComItens?>
+
+    @Transaction
+    @Query("SELECT * FROM comandas WHERE id = :id")
+    abstract suspend fun buscar(id: Long): ComandaComItens?
+
+    @Transaction
+    @Query("SELECT * FROM comandas WHERE status = 'ABERTA' AND identificacao = :identificacao COLLATE NOCASE LIMIT 1")
+    abstract suspend fun buscarAbertaPorIdentificacao(identificacao: String): ComandaComItens?
+
+    @Insert
+    protected abstract suspend fun inserir(comanda: ComandaEntity): Long
+
+    @Update
+    protected abstract suspend fun atualizar(comanda: ComandaEntity)
+
+    @Insert
+    protected abstract suspend fun inserirItens(itens: List<ItemComandaEntity>)
+
+    @Query("DELETE FROM itens_comanda WHERE comandaId = :comandaId")
+    protected abstract suspend fun apagarItens(comandaId: Long)
+
+    @Insert
+    protected abstract suspend fun inserirPagamentos(pagamentos: List<PagamentoEntity>)
+
+    @Query("DELETE FROM pagamentos WHERE comandaId = :comandaId")
+    protected abstract suspend fun apagarPagamentos(comandaId: Long)
+
+    @Query("SELECT * FROM pagamentos WHERE caixaId = :caixaId ORDER BY pagoEm")
+    abstract suspend fun pagamentosDoCaixa(caixaId: Long): List<PagamentoEntity>
+
+    @Query("SELECT versao FROM comandas WHERE id = :id")
+    protected abstract suspend fun versaoGravada(id: Long): Long?
+
+    /**
+     * Salva a comanda e substitui todos os seus itens e pagamentos numa única transação.
+     * Recusa (ConflitoDeVersaoException) se outro aparelho gravou depois da leitura.
+     */
+    @Transaction
+    open suspend fun salvar(comanda: Comanda): Long {
+        val id = if (comanda.id == 0L) {
+            inserir(comanda.copy(versao = 0).paraEntidade())
+        } else {
+            val gravada = versaoGravada(comanda.id)
+            if (gravada != null && gravada != comanda.versao) throw ConflitoDeVersaoException()
+            comanda.id.also { atualizar(comanda.copy(versao = comanda.versao + 1).paraEntidade()) }
+        }
+        apagarItens(id)
+        inserirItens(
+            comanda.itens.mapIndexed { i, item ->
+                ItemComandaEntity(
+                    comandaId = id,
+                    posicao = i,
+                    produtoId = item.produtoId,
+                    nome = item.nome,
+                    precoUnitarioCentavos = item.precoUnitarioCentavos,
+                    quantidade = item.quantidade,
+                    observacao = item.observacao,
+                    setor = item.setor.name,
+                    quantidadeEnviada = item.quantidadeEnviada,
+                )
+            },
+        )
+        apagarPagamentos(id)
+        inserirPagamentos(comanda.pagamentos.mapIndexed { i, p -> PagamentoEntity.de(id, i, p) })
+        return id
+    }
+}
+
+@Dao
+interface UsuarioDao {
+    @Query("SELECT * FROM usuarios ORDER BY ativo DESC, nome COLLATE NOCASE")
+    fun observarTodos(): Flow<List<UsuarioEntity>>
+
+    @Query("SELECT * FROM usuarios")
+    suspend fun listarTodos(): List<UsuarioEntity>
+
+    @Query("SELECT * FROM usuarios WHERE id = :id")
+    suspend fun buscar(id: Long): UsuarioEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun salvar(usuario: UsuarioEntity): Long
+}
+
+@Dao
+abstract class CaixaDao {
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NULL LIMIT 1")
+    abstract fun observarAberto(): Flow<CaixaComMovimentos?>
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NOT NULL ORDER BY fechadoEm DESC LIMIT 60")
+    abstract fun observarFechados(): Flow<List<CaixaComMovimentos>>
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE fechadoEm IS NULL LIMIT 1")
+    abstract suspend fun buscarAberto(): CaixaComMovimentos?
+
+    @Transaction
+    @Query("SELECT * FROM caixas WHERE id = :id")
+    abstract suspend fun buscar(id: Long): CaixaComMovimentos?
+
+    @Insert
+    protected abstract suspend fun inserir(caixa: CaixaEntity): Long
+
+    @Update
+    protected abstract suspend fun atualizar(caixa: CaixaEntity)
+
+    @Insert
+    protected abstract suspend fun inserirMovimentos(movimentos: List<MovimentoCaixaEntity>)
+
+    @Query("DELETE FROM movimentos_caixa WHERE caixaId = :caixaId")
+    protected abstract suspend fun apagarMovimentos(caixaId: Long)
+
+    @Query("SELECT versao FROM caixas WHERE id = :id")
+    protected abstract suspend fun versaoGravada(id: Long): Long?
+
+    /** Salva o caixa e seus movimentos, com o mesmo controle de versão das comandas. */
+    @Transaction
+    open suspend fun salvar(caixa: Caixa): Long {
+        val id = if (caixa.id == 0L) {
+            inserir(caixa.copy(versao = 0).paraEntidade())
+        } else {
+            val gravada = versaoGravada(caixa.id)
+            if (gravada != null && gravada != caixa.versao) throw ConflitoDeVersaoException()
+            caixa.id.also { atualizar(caixa.copy(versao = caixa.versao + 1).paraEntidade()) }
+        }
+        apagarMovimentos(id)
+        inserirMovimentos(
+            caixa.movimentos.mapIndexed { i, m ->
+                MovimentoCaixaEntity(
+                    caixaId = id,
+                    posicao = i,
+                    tipo = m.tipo.name,
+                    valorCentavos = m.valorCentavos,
+                    motivo = m.motivo,
+                    em = m.em,
+                    por = m.por,
+                    forma = m.forma?.name,
+                )
+            },
+        )
+        return id
+    }
+}

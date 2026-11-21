@@ -1,0 +1,15 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Chave de assinatura (nunca no Git)
+keystore.properties
+*.jks
